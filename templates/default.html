@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    /* Страница = 100×70 мм, без полей */
+    @page { size: 100mm 70mm; margin: 0; }
+    html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+
+    /* БАЗА: у всей этикетки единый маленький размер */
+    .label {
+      box-sizing: border-box;
+      width: 100mm; height: 70mm;
+      padding: 2mm 3mm;
+      display: grid; grid-template-rows: auto 1fr auto;
+      gap: 1mm; page-break-after: always;
+      font-size: 6.2pt;              /* <-- базовый размер для ВСЕХ внутри */
+      line-height: 1.15;
+    }
+    /* Наследование размера для любых тегов внутри: p, div, h*, li, pre и т.д. */
+    .label * { font-size: inherit; line-height: inherit; font-family: inherit; }
+    /* На всякий: заголовки не увеличивают размер */
+    .label h1,.label h2,.label h3,.label h4,.label h5,.label h6 { margin:0; font-weight:700; }
+    /* Сильный текст — только жирность, без увеличения размера */
+    .label b, .label strong { font-weight:700; font-size: inherit; }
+
+    /* ТОЛЬКО эти два делаем крупнее */
+    .title { font-size: 10pt !important; font-weight: 700; text-align:center; line-height:1.1; }
+    .mass  { font-size: 8.2pt !important; font-weight: 700; text-align:center; }
+
+    /* Разметка блока контента и колонок */
+    .row { display:grid; grid-template-columns: 1fr 22mm; gap: 1mm; }
+    .block { margin-top: 0.6mm; }
+    .small { opacity: .98; }
+    .tiny  { opacity: .95; }
+
+    /* Баркод компактнее */
+    .barcode { text-align:center; align-self:end; }
+    .barcode img { width:100%; height:auto; display:block; }
+    .digits { font-size: 6pt !important; margin-top: 0.3mm; letter-spacing: .2pt; }
+
+    /* Длинные тексты не расползаются */
+    .clamp-3 { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    pre { white-space: pre-wrap; } /* если где-то адрес в <pre> */
+  </style>
+
+
+</head>
+<body>
+  <div class="sheet">
+    {{#each labels}}
+    <div class="label">
+      <div class="hdr">
+        <div class="title">{{this.productName}}</div>
+        {{#if this.weight}}<div class="mass">масса нетто: {{this.weight}}</div>{{/if}}
+      </div>
+
+      {{#if this.composition}}
+      <div class="block"><b>Состав:</b> {{this.composition}}</div>
+      {{/if}}
+
+      <div class="row">
+        <div class="col">
+          <div class="block">
+            <b>Пищевая ценность (на 100 г):</b><br/>
+            Белки: {{#if this.proteins100g}}{{this.proteins100g}} г{{else}}—{{/if}};<br/>
+            Жиры: {{#if this.fats100g}}{{this.fats100g}} г{{else}}—{{/if}};<br/>
+            Углеводы: {{#if this.carbs100g}}{{this.carbs100g}} г{{else}}—{{/if}}
+          </div>
+          <div class="block"><b>Энергетическая ценность:</b> {{this.energyText}}</div>
+
+          {{#if this.standard}}<div class="block">СТБ / ГОСТ: {{this.standard}}</div>{{/if}}
+          {{#if this.shelfLife}}<div class="block">Срок годности: {{this.shelfLife}}</div>{{/if}}
+          {{#if this.expiresAt}}<div class="block">Годен до: {{this.expiresAt}}</div>{{/if}}
+          <div class="block tiny">
+            {{#if this.manufacturedAt}}Изготовлено: {{this.manufacturedAt}}<br/>{{/if}}
+            {{#if this.packagedAt}}Упаковано: {{this.packagedAt}}{{/if}}
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="barcode">
+            {{#if this.barcodeDataUrl}}<img src="{{this.barcodeDataUrl}}" alt="barcode" />{{/if}}
+            <div class="tiny">{{this.barcode}}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">{{this.address}}</div>
+      <div class="footer"><b>МЧС:</b> {{this.mchsInfo}}</div>
+      <div class="footer">Сайт: {{this.website}}</div>
+    </div>
+    {{/each}}
+  </div>
+</body>
+</html>

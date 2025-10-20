@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    /* Страница = этикетка 58x40, поля нулевые (ставим padding на самой этикетке) */
+    @page { size: 58mm 40mm; margin: 0; }
+    html, body { padding:0; margin:0; }
+    body { font-family: Arial, sans-serif; }
+
+    /* Каждая .label = одна страница */
+    .label {
+      box-sizing: border-box;
+      width: 58mm;
+      height: 40mm;
+      padding: 2mm 2.5mm; /* внутренние поля этикетки */
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 1mm;
+      page-break-after: always;
+      border: 0.2mm solid #333; /* при желании убрать */
+    }
+
+    .title { font-size: 9.5pt; font-weight: 700; line-height:1.2; text-align:center; }
+    .mass { font-size: 8.5pt; font-weight: 700; text-align:center; margin-top: 0.3mm; }
+
+    .small { font-size: 6.8pt; line-height: 1.25; }
+    .tiny  { font-size: 6.2pt; line-height: 1.2; opacity: .95; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 22mm; /* текст | штрих-кодная колонка */
+      gap: 1mm;
+      min-height: 0;
+    }
+
+    .col-text { min-width: 0; }
+    .kv { margin-top: 0.6mm; }
+    .kv b { font-weight:700; }
+
+    .barcode { text-align:center; align-self: end; }
+    .barcode img { width: 100%; height: auto; display:block; }
+    .digits { font-size: 6.2pt; margin-top: 0.3mm; }
+
+    .foot { margin-top: 0.6mm; }
+  </style>
+</head>
+<body>
+  {{#each labels}}
+    <div class="label">
+      <div>
+        <div class="title">{{this.productName}}</div>
+        {{#if this.weight}}<div class="mass">масса нетто: {{this.weight}}</div>{{/if}}
+      </div>
+
+      <div class="row">
+        <div class="col-text">
+          {{#if this.composition}}
+            <div class="small"><b>Состав:</b> {{this.composition}}</div>
+          {{/if}}
+
+          <div class="small kv">
+            <b>Пищевая ценность (на 100 г):</b>
+            белки {{#if this.proteins100g}}{{this.proteins100g}}{{else}}—{{/if}} г;
+            жиры {{#if this.fats100g}}{{this.fats100g}}{{else}}—{{/if}} г;
+            углеводы {{#if this.carbs100g}}{{this.carbs100g}}{{else}}—{{/if}} г.
+          </div>
+
+          <div class="small"><b>Энерг. ценность:</b> {{this.energyText}}</div>
+
+          {{#if this.standard}}<div class="tiny">СТБ/ГОСТ: {{this.standard}}</div>{{/if}}
+          {{#if this.shelfLife}}<div class="tiny">Срок годности: {{this.shelfLife}}</div>{{/if}}
+          <div class="tiny">
+            {{#if this.manufacturedAt}}Изготовлено: {{this.manufacturedAt}}; {{/if}}
+            {{#if this.packagedAt}}Упаковано: {{this.packagedAt}}{{/if}}
+          </div>
+
+          <!-- Заглушки (можно заменить позже данными из БД) -->
+          <div class="tiny foot">Адрес: Республика Беларусь, г. Минск, ул. Примерная, 1</div>
+          <div class="tiny">МЧС: при ЧС звоните 101 или 112</div>
+          <div class="tiny">Сайт: https://example.by</div>
+        </div>
+
+        <div class="barcode">
+          {{#if this.barcodeDataUrl}}
+            <img src="{{this.barcodeDataUrl}}" alt="EAN-13"/>
+          {{/if}}
+          <div class="digits">{{this.barcode}}</div>
+        </div>
+      </div>
+    </div>
+  {{/each}}
+</body>
+</html>

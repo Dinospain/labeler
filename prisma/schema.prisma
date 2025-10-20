@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Label {
+  id             Int       @id @default(autoincrement())
+  productName    String
+  weight         String?
+  manufacturedAt DateTime?
+  packagedAt     DateTime?
+  expiresAt      DateTime?
+  shelfLife      String?
+  composition    String?
+  proteins100g   Float?
+  fats100g       Float?
+  carbs100g      Float?
+  standard       String?
+  address        String?
+  mchsInfo       String?
+  website        String?
+  barcode        String?
+  barcodeType    String    @default("ean13")
+  extra          Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  folderId       Int?
+  folder         Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([folderId])
+}
+
+model Template {
+  id        Int      @id @default(autoincrement())
+  name      String
+  html      String // Handlebars-шаблон
+  isCurrent Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model Folder {
+  id        Int      @id @default(autoincrement())
+  name      String
+  labels    Label[]
+  createdAt DateTime @default(now())
+}
