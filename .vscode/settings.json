@@ -1,0 +1,21 @@
+{
+  // Включить автоисправление ошибок ESLint при сохранении
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // Чтобы VS Code форматировал автоматически
+  "editor.formatOnSave": true,
+
+  // Необязательно: ограничить действие только на JavaScript/TypeScript
+  "[javascript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    }
+  },
+  "[typescript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    }
+  }
+}

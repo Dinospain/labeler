@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { useLabels, type Label as StoreLabel } from "../store/labels"
 import { useFolders, type Folder as StoreFolder } from "../store/folders"
 import LabelEditorModal from "../components/LabelEditorModal"
@@ -9,7 +8,7 @@ import PrintModal from "../components/PrintModal"
 type LabelVM = { id: number; name: string; updatedAt?: string | null; folderId?: number | null }
 
 export default function LabelsFourPanels() {
-  const nav = useNavigate()
+
   const searchRef = useRef<HTMLInputElement | null>(null)
 
   const { items: labels, fetch: fetchLabels, remove: removeLabel, create: createLabel, update: updateLabel } = useLabels()
@@ -20,7 +19,7 @@ export default function LabelsFourPanels() {
   const [selectedLabelId, setSelectedLabelId] = useState<number | null>(null)
   const [newFolderName, setNewFolderName] = useState("")
   const [editId, setEditId] = useState<number | null>(null) // ← модалка
-  const [createOpen, setCreateOpen] = useState(false)  
+  const [createOpen, setCreateOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
 
   useEffect(() => {
@@ -69,7 +68,7 @@ export default function LabelsFourPanels() {
     return byQuery.sort((a, b) => a.name.localeCompare(b.name))
   }, [labelVMs, activeFolder, q])
 
-    function handleCreateLabel() {
+  function handleCreateLabel() {
     setCreateOpen(true)
   }
 
@@ -139,7 +138,7 @@ export default function LabelsFourPanels() {
             <button onClick={handleCreateFolder} className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-black shadow-sm">
               + Папка
             </button>
-          <button onClick={handleCreateLabel} className="px-4 py-2 rounded-xl bg-sky-600 text-white hover:bg-sky-700 shadow-sm">              + Этикетка
+            <button onClick={handleCreateLabel} className="px-4 py-2 rounded-xl bg-sky-600 text-white hover:bg-sky-700 shadow-sm">              + Этикетка
             </button>
           </div>
         </div>
@@ -167,9 +166,8 @@ export default function LabelsFourPanels() {
                           <button
                             onDoubleClick={() => setEditId(l.id)}  // двойной клик сразу открывает редактор
                             onClick={() => setSelectedLabelId(selected ? null : l.id)}
-                            className={`w-full text-left px-4 py-3 flex items-center justify-between hover:bg-slate-50 ${
-                              selected ? "bg-sky-50 ring-1 ring-sky-200" : ""
-                            }`}
+                            className={`w-full text-left px-4 py-3 flex items-center justify-between hover:bg-slate-50 ${selected ? "bg-sky-50 ring-1 ring-sky-200" : ""
+                              }`}
                           >
                             <span className="truncate">{l.name}</span>
                             <span className="text-sm text-slate-500">{l.updatedAt ? new Date(l.updatedAt).toLocaleDateString() : "—"}</span>
@@ -198,9 +196,8 @@ export default function LabelsFourPanels() {
                       setActiveFolder(f.id)
                       setSelectedLabelId(null)
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 ${
-                      activeFolder === f.id ? "bg-slate-100 font-medium" : ""
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 ${activeFolder === f.id ? "bg-slate-100 font-medium" : ""
+                      }`}
                   >
                     {f.name}
                     {typeof f.count === "number" ? ` (${f.count})` : ""}
@@ -239,7 +236,7 @@ export default function LabelsFourPanels() {
         ids={selectedLabelId ? [selectedLabelId] : []}
         defaultSize="100x70"
       />
-       {/* Модальное окно создания */}
+      {/* Модальное окно создания */}
       <LabelCreateModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -253,7 +250,7 @@ export default function LabelsFourPanels() {
     </div>
   )
 }
-     
+
 function ActionButton({
   label,
   onClick,
@@ -269,9 +266,8 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`px-4 py-2 rounded-xl border shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed ${
-        variant === "danger" ? "bg-rose-600 text-white hover:bg-rose-700 border-rose-600" : "bg-white hover:bg-slate-50"
-      }`}
+      className={`px-4 py-2 rounded-xl border shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed ${variant === "danger" ? "bg-rose-600 text-white hover:bg-rose-700 border-rose-600" : "bg-white hover:bg-slate-50"
+        }`}
     >
       {label}
     </button>
