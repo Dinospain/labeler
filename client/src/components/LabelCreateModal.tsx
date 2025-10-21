@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Modal from "./Modal";
+import Modal from "./atoms/Modal";
 import { useLabels } from "../store/labels";
 import { useFolders, type Folder } from "../store/folders";
 
