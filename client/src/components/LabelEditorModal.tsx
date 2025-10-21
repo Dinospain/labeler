@@ -13,6 +13,7 @@ type Props = {
 function toISO(dateStr?: string) {
   return dateStr ? new Date(dateStr + "T00:00:00").toISOString() : undefined;
 }
+
 function fromISO(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -22,7 +23,19 @@ function fromISO(iso?: string | null) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
+
+const parseNumber = (value: string | number): number | null => {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+  if (trimmedValue !== "") {
+    return Number(trimmedValue);
+  }
+
+  return null;
+};
 
 export default function LabelEditorModal({
   id,
@@ -61,17 +74,17 @@ export default function LabelEditorModal({
       setForm({
         productName: l.productName ?? "",
         weight: l.weight ?? "",
-        composition: (l as any).composition ?? "",
-        proteins100g: (l as any).proteins100g ?? "",
-        fats100g: (l as any).fats100g ?? "",
-        carbs100g: (l as any).carbs100g ?? "",
-        standard: (l as any).standard ?? "",
-        shelfLife: (l as any).shelfLife ?? "",
-        manufacturedAt: fromISO((l as any).manufacturedAt),
-        packagedAt: fromISO((l as any).packagedAt),
-        expiresAt: fromISO((l as any).expiresAt),
-        barcode: (l as any).barcode ?? "",
-        folderId: (l as any).folderId ?? "",
+        composition: l.composition ?? "",
+        proteins100g: l.proteins100g ?? "",
+        fats100g: l.fats100g ?? "",
+        carbs100g: l.carbs100g ?? "",
+        standard: l.standard ?? "",
+        shelfLife: l.shelfLife ?? "",
+        manufacturedAt: fromISO(l.manufacturedAt),
+        packagedAt: fromISO(l.packagedAt),
+        expiresAt: fromISO(l.expiresAt),
+        barcode: l.barcode ?? "",
+        folderId: l.folderId ?? "",
       });
     })();
   }, [open, id, getOne]);
@@ -103,9 +116,9 @@ export default function LabelEditorModal({
         manufacturedAt: toISO(form.manufacturedAt),
         packagedAt: toISO(form.packagedAt),
         expiresAt: toISO(form.expiresAt),
-        proteins100g: numOrNull(form.proteins100g),
-        fats100g: numOrNull(form.fats100g),
-        carbs100g: numOrNull(form.carbs100g),
+        proteins100g: parseNumber(form.proteins100g),
+        fats100g: parseNumber(form.fats100g),
+        carbs100g: parseNumber(form.carbs100g),
         barcode: form.barcode || undefined,
         barcodeType: "ean13",
         folderId: form.folderId ? Number(form.folderId) : null,
