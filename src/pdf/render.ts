@@ -1,19 +1,18 @@
-import fs from 'fs/promises'
-import path from 'path'
-import * as handlebars from 'handlebars'
-import bwip from 'bwip-js'
-import puppeteer from 'puppeteer'
-import { prisma } from '../prisma/client'
+import fs from "fs/promises";
+import path from "path";
+import * as handlebars from "handlebars";
+import bwip from "bwip-js";
+import puppeteer from "puppeteer";
+import { prisma } from "../prisma/client";
 
 /**
  * Опции рендера
  */
 export type RenderOptions = {
-  ids?: number[]
-  all?: boolean
-  size?: '58x40' | '100x70' | string
-  perRow?: number
-}
+  ids?: number[];
+  all: boolean;
+  size: "58x40" | "100x70" | string;
+};
 
 /**
  * Безопасный load шаблона:
@@ -22,28 +21,28 @@ export type RenderOptions = {
  * 3) если нет — даём встроенный минимальный шаблон (100×70)
  */
 async function loadTemplateHtml(): Promise<string> {
-    // 1) БД: берём самый свежий по updatedAt
+  // 1) БД: берём самый свежий по updatedAt
   try {
     const last = await prisma.template.findFirst({
-      orderBy: { updatedAt: 'desc' },
-    })
+      orderBy: { updatedAt: "desc" },
+    });
     if (last?.html && last.html.trim().length > 0) {
-      return last.html
+      return last.html;
     }
   } catch {
     // игнор — пойдём дальше
   }
   // 2) файл
-  const p = process.env.TEMPLATE_PATH ?? './templates/default.html'
+  const p = process.env.TEMPLATE_PATH ?? "./templates/default.html";
   try {
-    const html = await fs.readFile(path.resolve(p), 'utf8')
-    if (html.trim()) return html
+    const html = await fs.readFile(path.resolve(p), "utf8");
+    if (html.trim()) return html;
   } catch {
     // игнор — дадим бандл-шаблон
   }
 
   // 3) встроенный
-  return defaultTemplateHtml()
+  return defaultTemplateHtml();
 }
 
 /**
@@ -122,7 +121,7 @@ function defaultTemplateHtml(): string {
   </div>
   {{/each}}
 </body>
-</html>`
+</html>`;
 }
 
 /**
@@ -130,53 +129,63 @@ function defaultTemplateHtml(): string {
  * Если пришло меньше 12 цифр — добиваем нулями слева; если больше — берём первые 12.
  */
 function ensureEan13(input?: string | null): string {
-  const base = (input || '').replace(/\D/g, '')
-  const digits = (base.length >= 12 ? base : (base + '000000000000')).slice(0, 12)
-  const arr = digits.split('').map(Number)
-  const sum = arr.reduce((acc, d, i) => acc + d * (i % 2 ? 3 : 1), 0)
-  const check = (10 - (sum % 10)) % 10
-  return digits + String(check)
+  const base = (input || "").replace(/\D/g, "");
+  const digits = (base.length >= 12 ? base : base + "000000000000").slice(
+    0,
+    12
+  );
+  const arr = digits.split("").map(Number);
+  const sum = arr.reduce((acc, d, i) => acc + d * (i % 2 ? 3 : 1), 0);
+  const check = (10 - (sum % 10)) % 10;
+  return digits + String(check);
 }
 
 /**
  * Баркод как SVG data URL — это заметно снижает вес PDF.
  */
-async function makeBarcodeDataUrl(text?: string | null, compact = true): Promise<string> {
-  const svgBuf = await bwip.toBuffer({
-    bcid: 'ean13',
+async function makeBarcodeDataUrl(
+  text?: string | null,
+  compact = true
+): Promise<string> {
+  const pngBuffer = await bwip.toBuffer({
+    bcid: "ean13",
     text: ensureEan13(text),
     scale: compact ? 2.0 : 2.4,
     height: compact ? 8 : 9,
     includetext: false,
-    textxalign: 'center',
-    svg: true,
-  } as any)
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svgBuf.toString('utf8'))}`
+    textxalign: "center",
+  });
+
+  return `data:image/png;base64,${pngBuffer.toString("base64")}`;
 }
 
 /**
  * Энергетическая ценность из Б/Ж/У
  */
-function calcEnergyText(p?: number | null, f?: number | null, c?: number | null): string {
-  const proteins = Number(p ?? 0)
-  const fats = Number(f ?? 0)
-  const carbs = Number(c ?? 0)
-  const kcal = Math.round(proteins * 4 + fats * 9 + carbs * 4)
-  const kJ = Math.round(kcal * 4.184)
-  return `${kcal} ккал / ${kJ} кДж`
+function calcEnergyText(
+  p?: number | null,
+  f?: number | null,
+  c?: number | null
+): string {
+  const proteins = Number(p ?? 0);
+  const fats = Number(f ?? 0);
+  const carbs = Number(c ?? 0);
+  const kcal = Math.round(proteins * 4 + fats * 9 + carbs * 4);
+  const kJ = Math.round(kcal * 4.184);
+  return `${kcal} ккал / ${kJ} кДж`;
 }
 
 /**
  * Человекочитаемая дата (если не null)
  */
 function formatDate(d?: string | Date | null): string | undefined {
-  if (!d) return undefined
-  const date = typeof d === 'string' ? new Date(d) : d
-  if (isNaN(date.getTime())) return undefined
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yy = String(date.getFullYear())
-  return `${dd}.${mm}.${yy}`
+  if (!d) return undefined;
+  const date = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(date.getTime())) return undefined;
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yy = String(date.getFullYear());
+  return `${dd}.${mm}.${yy}`;
 }
 
 /**
@@ -185,9 +194,9 @@ function formatDate(d?: string | Date | null): string | undefined {
 async function mapLabelsForTemplate(labels: any[], compactBarcode: boolean) {
   const mapped = await Promise.all(
     labels.map(async (l) => {
-      const autoBase = String(200000000000 + Number(l.id || 0)) // стабильная база
-      const barcode = ensureEan13(l.barcode ? String(l.barcode) : autoBase)
-      const barcodeDataUrl = await makeBarcodeDataUrl(barcode, compactBarcode)
+      const autoBase = String(200000000000 + Number(l.id || 0)); // стабильная база
+      const barcode = ensureEan13(l.barcode ? String(l.barcode) : autoBase);
+      const barcodeDataUrl = await makeBarcodeDataUrl(barcode, compactBarcode);
 
       return {
         ...l,
@@ -197,90 +206,94 @@ async function mapLabelsForTemplate(labels: any[], compactBarcode: boolean) {
         energyText: calcEnergyText(l.proteins100g, l.fats100g, l.carbs100g),
         barcode,
         barcodeDataUrl,
-        address: l.address ?? 'Адрес: Республика Беларусь, г. Минск, ул. Примерная, 1',
-        mchsInfo: l.mchsInfo ?? 'МЧС: в случае ЧС звоните 101 или 112',
-        website: l.website ?? 'https://example.by',
-      }
+        address:
+          l.address ?? "Адрес: Республика Беларусь, г. Минск, ул. Примерная, 1",
+        mchsInfo: l.mchsInfo ?? "МЧС: в случае ЧС звоните 101 или 112",
+        website: l.website ?? "https://example.by",
+      };
     })
-  )
-  return mapped
+  );
+  return mapped;
 }
 
 /**
  * Собрать финальный HTML, используя Handlebars.
  */
-async function buildHtml(payload: { labels: any[] }, tplHtml: string): Promise<string> {
-  const tpl = handlebars.compile(tplHtml, { noEscape: true })
-  return tpl(payload)
+async function buildHtml(
+  payload: { labels: any[] },
+  tplHtml: string
+): Promise<string> {
+  const tpl = handlebars.compile(tplHtml, { noEscape: true });
+  return tpl(payload);
 }
 
 /**
  * Основной экспорт: отрисовка PDF по ids|all, с заданным размером страницы.
  */
-export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer> {
-  const size = (options.size ?? '').toLowerCase()
-  const is58x40 = size === '58x40'
-  const is100x70 = size === '100x70' || size === '10x7' // разрешим синоним
+export async function renderLabelsToPdf(
+  options: RenderOptions
+): Promise<Buffer> {
+  const size = options.size;
+  const is58x40 = size === "58x40";
+  const is100x70 = size === "100x70" || size === "10x7"; // разрешим синоним
+  const isSizeDefined = is58x40 || is100x70;
+
+  const [height, width] = is58x40 ? [58, 40] : [100, 70];
 
   // Получаем записи
-  let labels: any[] = []
+  let labels: any[] = [];
   if (options.all) {
-    labels = await prisma.label.findMany({ orderBy: { id: 'asc' } })
+    labels = await prisma.label.findMany({ orderBy: { id: "asc" } });
   } else if (options.ids && options.ids.length > 0) {
     labels = await prisma.label.findMany({
       where: { id: { in: options.ids } },
-      orderBy: { id: 'asc' },
-    })
+      orderBy: { id: "asc" },
+    });
   } else {
-    labels = [] // пусто — вернём PDF с пустым телом
+    labels = []; // пусто — вернём PDF с пустым телом
   }
 
   // Подготовка данных + шаблон
-  const compactBarcode = is58x40 || is100x70
-  const prepared = await mapLabelsForTemplate(labels, compactBarcode)
-  const tplHtml = await loadTemplateHtml()
-  const html = await buildHtml({ labels: prepared }, tplHtml)
+  const compactBarcode = is58x40 || is100x70;
+  const prepared = await mapLabelsForTemplate(labels, compactBarcode);
+  const tplHtml = await loadTemplateHtml();
+  const html = await buildHtml({ labels: prepared }, tplHtml);
 
   // Puppeteer
   const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--font-render-hinting=medium'],
-  })
+    args: ["--no-sandbox", "--font-render-hinting=medium"],
+  });
   try {
-    const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: 'networkidle0' })
+    const page = await browser.newPage();
 
-    // Для этикеток фоновую печать часто отключаем (экономит размер)
-    const printBackground = false
+    await page.setContent(html, { waitUntil: "networkidle0" });
 
     const pdfBuffer = await page.pdf(
-      is58x40
+      isSizeDefined
         ? {
-            width: '58mm',
-            height: '40mm',
-            margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
-            printBackground,
-            preferCSSPageSize: true,
-          }
-        : is100x70
-        ? {
-            width: '100mm',
-            height: '70mm',
-            margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
-            printBackground,
-            preferCSSPageSize: true,
+            width: `${width}mm`,
+            height: `${height}mm`,
+            margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
+            printBackground: false,
+            preferCSSPageSize: false,
           }
         : {
-            format: 'A4',
-            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+            format: "A4",
+            margin: {
+              top: "10mm",
+              bottom: "10mm",
+              left: "10mm",
+              right: "10mm",
+            },
             printBackground: true,
             preferCSSPageSize: true,
           }
-    )
+    );
 
-    await page.close()
-    return pdfBuffer
+    await page.close();
+    return pdfBuffer;
   } finally {
-    await browser.close()
+    await browser.close();
   }
 }
 
@@ -291,18 +304,27 @@ export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer>
  *   res.setHeader('Content-Type', 'application/pdf');
  *   res.send(buf);
  */
-export async function renderLabelsToPdfFromRequest(req: any): Promise<Buffer> {
-  const idsParam = (req.query.ids as string | undefined)?.trim()
-  const all = String(req.query.all ?? '').toLowerCase() === 'true'
-  const size = (req.query.size as string | undefined) ?? '100x70'
 
-  let ids: number[] | undefined
+interface RenderLabelsQuery {
+  ids?: string;
+  all?: string;
+  size?: string;
+}
+
+export async function renderLabelsToPdfFromRequest(req: {
+  query: RenderLabelsQuery;
+}): Promise<Buffer> {
+  const idsParam = req.query.ids?.trim();
+  const all = req.query.all?.toLowerCase() === "true";
+  const size = req.query.size?.toLocaleLowerCase() ?? "100x70";
+
+  let ids: number[] | undefined;
   if (idsParam) {
     ids = idsParam
-      .split(',')
+      .split(",")
       .map((s) => Number(s.trim()))
-      .filter((n) => Number.isFinite(n))
+      .filter((n) => Number.isFinite(n));
   }
 
-  return renderLabelsToPdf({ ids, all, size })
+  return renderLabelsToPdf({ ids, all, size });
 }
