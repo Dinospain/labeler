@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Modal from "./Modal";
+import Modal from "./atoms/Modal";
 
 type Props = {
   open: boolean;
@@ -41,8 +41,10 @@ export default function PrintModal({
         const q = new URLSearchParams();
         q.set("ids", ids.join(","));
         q.set("size", size);
+
         const r = await fetch(`/api/print?${q.toString()}`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         setPdfUrl(url);
@@ -67,6 +69,7 @@ export default function PrintModal({
 
   return (
     <Modal
+      fullHeight
       open={open}
       onClose={onClose}
       title="Печать этикетки"
@@ -111,7 +114,7 @@ export default function PrintModal({
       {loading && <div className="p-4 text-slate-500">Готовим PDF…</div>}
       {error && <div className="p-4 text-rose-600">Ошибка: {error}</div>}
 
-      <div className="border rounded overflow-hidden h-[70vh]">
+      <div className="border rounded grow">
         {pdfUrl ? (
           <iframe
             ref={iframeRef}
