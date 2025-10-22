@@ -1,45 +1,56 @@
 // client/src/components/PrintModal.tsx
-import { useEffect, useMemo, useRef } from "react"
-import { getAccountSlug } from "../utils/account"
+import { useEffect, useMemo, useRef } from "react";
+import { getAccountSlug } from "../utils/account";
 
 type Props = {
-  open: boolean
-  labelId: number | null
-  size?: "58x40" | "100x70" | "a4" | string
-  onClose: () => void
-}
+  open: boolean;
+  labelId: number | null;
+  size?: "58x40" | "100x70" | "a4" | string;
+  onClose: () => void;
+};
 
-export default function PrintModal({ open, labelId, size = "58x40", onClose }: Props) {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+export default function PrintModal({
+  open,
+  labelId,
+  size = "58x40",
+  onClose,
+}: Props) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const src = useMemo(() => {
-    if (!open || !labelId) return ""
-    const qs = new URLSearchParams({ ids: String(labelId), size })
-    const slug = getAccountSlug()
-    if (slug) qs.set("account", slug)
-    return `/api/print?${qs.toString()}`
-  }, [open, labelId, size])
+    if (!open || !labelId) return "";
+    const qs = new URLSearchParams({ ids: String(labelId), size });
+    const slug = getAccountSlug();
+    if (slug) qs.set("account", slug);
+    return `/api/print?${qs.toString()}`;
+  }, [open, labelId, size]);
 
   useEffect(() => {
     // фокус на iframe после загрузки, чтобы печать сразу уходила на правильный документ
-    const ifr = iframeRef.current
-    if (!ifr) return
-    const onLoad = () => { try { ifr.contentWindow?.focus() } catch { } }
-    ifr.addEventListener("load", onLoad)
-    return () => ifr.removeEventListener("load", onLoad)
-  }, [src])
+    const ifr = iframeRef.current;
+    if (!ifr) return;
+    const onLoad = () => {
+      try {
+        ifr.contentWindow?.focus();
+      } catch {}
+    };
+    ifr.addEventListener("load", onLoad);
+    return () => ifr.removeEventListener("load", onLoad);
+  }, [src]);
 
-  if (!open || !labelId) return null
+  if (!open || !labelId) return null;
 
   const handlePrint = () => {
-    const w = iframeRef.current?.contentWindow
+    const w = iframeRef.current?.contentWindow;
     try {
-      w?.focus()
-      w?.print()
+      w?.focus();
+      w?.print();
     } catch (e) {
-      alert("Не удалось запустить печать. Скачайте PDF и распечатайте вручную.")
+      alert(
+        "Не удалось запустить печать. Скачайте PDF и распечатайте вручную."
+      );
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
@@ -55,7 +66,7 @@ export default function PrintModal({ open, labelId, size = "58x40", onClose }: P
             </button>
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white"
+              className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600"
             >
               Печать
             </button>
@@ -79,5 +90,5 @@ export default function PrintModal({ open, labelId, size = "58x40", onClose }: P
         </div>
       </div>
     </div>
-  )
+  );
 }
