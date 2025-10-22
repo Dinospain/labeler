@@ -28,8 +28,13 @@ model Label {
   extra          Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  folderId       Int?
-  folder         Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  // принадлежит аккаунту
+  account        Account   @relation(fields: [accountId], references: [id])
+  accountId      Int
+
+  // связь с папкой внутри аккаунта
+  folderId Int?
+  folder   Folder? @relation(fields: [folderId], references: [id])
 
   @@index([folderId])
 }
@@ -41,11 +46,28 @@ model Template {
   isCurrent Boolean  @default(false)
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+  account   Account  @relation(fields: [accountId], references: [id])
+  accountId Int
 }
 
 model Folder {
   id        Int      @id @default(autoincrement())
   name      String
+  account   Account  @relation(fields: [accountId], references: [id])
+  accountId Int
   labels    Label[]
   createdAt DateTime @default(now())
+}
+
+model Account {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slug      String   @unique // для удобного указания в заголовке/урле
+  apiKey    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  folders   Folder[]
+  labels    Label[]
+  templates Template[]
 }

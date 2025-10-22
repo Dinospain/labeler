@@ -1,118 +1,109 @@
-import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { z } from 'zod';
+import { Router, Request, Response } from 'express'
+import { prisma } from '../prisma/client'
 
-const prisma = new PrismaClient();
-const router = Router();
+export const router = Router()
 
-const labelCreateSchema = z.object({
-  productName: z.string().min(1),
-  weight: z.string().optional(),
-  packagedAt: z.string().datetime().optional(),
-  manufacturedAt: z.string().datetime().optional(),
-  expiresAt: z.string().datetime().optional(),
-  shelfLife: z.string().optional(),
-  composition: z.string().optional(),
-  proteins100g: z.coerce.number().nullable().optional(),
-  fats100g: z.coerce.number().nullable().optional(),
-  carbs100g: z.coerce.number().nullable().optional(),
-  standard: z.string().optional(),
-  address: z.string().optional(),
-  mchsInfo: z.string().optional(),
-  website: z.string().optional(),
-  barcode: z.string().optional().nullable(),
-  barcodeType: z.string().optional(),
-  priceCents: z.number().int().optional(),
-  folderId: z.coerce.number().int().nullable().optional(),
-  extra: z.any().optional()
-});
-function nowIso() { return new Date().toISOString(); }
-router.get('/', async (req, res) => {
-  const page = Number(req.query.page ?? 1);
-  const take = Number(req.query.take ?? 20);
-  const skip = (page - 1) * take;
+// Глобальный гард: без аккаунта — 400, чтобы не падало на req.account!.id
+router.use((req, res, next) => {
+  if (!req.account) {
+    return res.status(401).json({ error: 'Not authenticated (missing X-Account header)' })
+  }
+  next()
+})
+// helpers
+const numOrNull = (v: any): number | null =>
+  v === undefined || v === null || v === '' ? null : Number(v)
 
-  const [items, total] = await Promise.all([
-    prisma.label.findMany({ skip, take, orderBy: { id: 'desc' } }),
-    prisma.label.count()
-  ]);
+const dateOrNull = (v: any): Date | null => {
+  if (!v) return null
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
 
-  res.json({ items, total, page, take });
-});
+function pickCreateUpdate(body: any) {
+  return {
+    productName: String(body.productName ?? '').trim(),
+    weight: body.weight ?? null,
+    composition: body.composition ?? null,
+    proteins100g: numOrNull(body.proteins100g),
+    fats100g: numOrNull(body.fats100g),
+    carbs100g: numOrNull(body.carbs100g),
+    standard: body.standard ?? null,
+    shelfLife: body.shelfLife ?? null,
+    manufacturedAt: dateOrNull(body.manufacturedAt),
+    packagedAt: dateOrNull(body.packagedAt),
+    expiresAt: dateOrNull(body.expiresAt),
+    barcode: body.barcode ?? null,
+    barcodeType: 'ean13' as const,
+    folderId:
+      body.folderId === null || body.folderId === '' ? null :
+        body.folderId === undefined ? undefined : Number(body.folderId),
+  }
+}
 
-router.get('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  const item = await prisma.label.findUnique({ where: { id } });
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  res.json(item);
-});
+// GET /api/labels
+router.get('/', async (req: Request, res: Response) => {
+  const items = await prisma.label.findMany({
+    where: { accountId: req.account!.id },
+    orderBy: { updatedAt: 'desc' },
+  })
+  res.json(items)
+})
 
-router.post('/', async (req, res) => {
-  console.log('[POST /labels] body =', req.body);
-  const parsed = labelCreateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(parsed.error);
+// GET /api/labels/:id
+router.get('/:id', async (req: Request, res: Response) => {
+  const id = Number(req.params.id)
+  const item = await prisma.label.findFirst({
+    where: { id, accountId: req.account!.id },
+  })
+  if (!item) return res.status(404).json({ error: 'Not found' })
+  res.json(item)
+})
 
-  const data = parsed.data;
+// POST /api/labels
+router.post('/', async (req: Request, res: Response) => {
+  const data = pickCreateUpdate(req.body)
+  if (!data.productName) {
+    return res.status(400).json({ error: 'productName is required' })
+  }
+  // защита: если folderId указан, он должен принадлежать аккаунту
+  if (data.folderId != null) {
+    const folder = await prisma.folder.findUnique({ where: { id: data.folderId } })
+    if (!folder || folder.accountId !== req.account!.id) {
+      return res.status(400).json({ error: 'Invalid folderId for this account' })
+    }
+  }
   const created = await prisma.label.create({
-    data: {
-      productName: data.productName,
-      weight: data.weight,
-      manufacturedAt: new Date(data.manufacturedAt ?? nowIso()), // авто-датa
-      packagedAt: new Date(data.packagedAt ?? nowIso()),
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-      shelfLife: data.shelfLife ?? null,
-      composition: data.composition ?? null,
-      standard: data.standard ?? null,
-      address: data.address ?? null,
-      mchsInfo: data.mchsInfo ?? null,
-      website: data.website ?? null,
-      proteins100g: data.proteins100g ?? null,
-      fats100g: data.fats100g ?? null,
-      carbs100g: data.carbs100g ?? null,
-      barcode: data.barcode ?? null,
-      barcodeType: 'ean13',
-      folderId: data.folderId ?? null,
-      extra: data.extra ?? null
+    data: { ...data, accountId: req.account!.id },
+  })
+  res.status(201).json(created)
+})
+
+// PUT /api/labels/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  const id = Number(req.params.id)
+  const exists = await prisma.label.findUnique({ where: { id } })
+  if (!exists || exists.accountId !== req.account!.id) {
+    return res.status(404).json({ error: 'Not found' })
+  }
+  const data = pickCreateUpdate(req.body)
+  if (data.folderId != null) {
+    const folder = await prisma.folder.findUnique({ where: { id: data.folderId } })
+    if (!folder || folder.accountId !== req.account!.id) {
+      return res.status(400).json({ error: 'Invalid folderId for this account' })
     }
-  });
-  res.status(201).json(created);
-});
+  }
+  const updated = await prisma.label.update({ where: { id }, data })
+  res.json(updated)
+})
 
-router.put('/:id', async (req, res) => {
-  console.log('[PUT /labels/:id] body =', req.body);
-  const id = Number(req.params.id);
-  const parsed = labelCreateSchema.partial().safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(parsed.error);
-
-  const data = parsed.data;
-  const updated = await prisma.label.update({
-    where: { id },
-    data: {
-      productName: data.productName,
-      weight: data.weight,
-      manufacturedAt: data.manufacturedAt ? new Date(data.manufacturedAt) : undefined,
-      packagedAt: data.packagedAt ? new Date(data.packagedAt) : undefined,      expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
-      shelfLife: data.shelfLife,
-      composition: data.composition,
-      proteins100g: data.proteins100g ?? undefined,
-      fats100g: data.fats100g ?? undefined,
-      carbs100g: data.carbs100g ?? undefined,
-      standard: data.standard,
-      address: data.address,
-      mchsInfo: data.mchsInfo,
-      website: data.website,
-      barcodeType: 'ean13',
-      folderId: data.folderId ?? undefined,
-      extra: data.extra ?? undefined
-    }
-  });
-  res.json(updated);
-});
-
-router.delete('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  await prisma.label.delete({ where: { id } });
-  res.json({ ok: true });
-});
-
-export default router;
+// DELETE /api/labels/:id
+router.delete('/:id', async (req: Request, res: Response) => {
+  const id = Number(req.params.id)
+  const exists = await prisma.label.findUnique({ where: { id } })
+  if (!exists || exists.accountId !== req.account!.id) {
+    return res.status(404).json({ error: 'Not found' })
+  }
+  await prisma.label.delete({ where: { id } })
+  res.status(204).end()
+})

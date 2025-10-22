@@ -1,269 +1,133 @@
-import { useEffect, useState } from "react";
-import Modal from "./Modal";
-import { useLabels } from "../store/labels";
-import { useFolders, type Folder } from "../store/folders";
+import { useState } from 'react'
+import type { Folder, Label } from '../types'
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
-  onCreated?: (id: number) => void; // вернём id созданной этикетки
-  presetFolderId?: number | null; // если выбрана папка справа — подставим её
-};
-
-function toISO(dateStr?: string) {
-  return dateStr ? new Date(dateStr + "T00:00:00").toISOString() : undefined;
+  open: boolean
+  folders: Folder[]
+  defaultFolderId?: number | null
+  onClose: () => void
+  onCreate: (payload: Partial<Label>) => Promise<void>
 }
-const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
 
-export default function LabelCreateModal({
-  open,
-  onClose,
-  onCreated,
-  presetFolderId,
-}: Props) {
-  const { create } = useLabels();
-  const { items: folders, fetch: fetchFolders } = useFolders();
+export default function LabelCreateModal({ open, folders, defaultFolderId, onClose, onCreate }: Props) {
+  const [v, setV] = useState<Partial<Label>>({
+    productName: '',
+    folderId: defaultFolderId ?? null,
+    weight: '',
+    composition: '',
+    proteins100g: null,
+    fats100g: null,
+    carbs100g: null,
+    standard: '',
+    shelfLife: '',
+    barcode: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    productName: "",
-    weight: "",
-    composition: "",
-    proteins100g: "",
-    fats100g: "",
-    carbs100g: "",
-    standard: "",
-    shelfLife: "",
-    manufacturedAt: "",
-    packagedAt: "",
-    expiresAt: "",
-    barcode: "",
-    folderId: "" as number | "" | null,
-  });
+  if (!open) return null
 
-  useEffect(() => {
-    if (open) {
-      fetchFolders();
-      // при открытии — проставим выбранную папку (если есть)
-      setForm((s) => ({ ...s, folderId: presetFolderId ?? "" }));
-    } else {
-      // сброс формы при закрытии
-      setForm({
-        productName: "",
-        weight: "",
-        composition: "",
-        proteins100g: "",
-        fats100g: "",
-        carbs100g: "",
-        standard: "",
-        shelfLife: "",
-        manufacturedAt: "",
-        packagedAt: "",
-        expiresAt: "",
-        barcode: "",
-        folderId: "" as number | "" | null,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  const num = (s: string) => (s === '' ? null : Number(s))
 
-  const set =
-    (k: string) =>
-    (
-      e: React.ChangeEvent<
-        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-      >
-    ) =>
-      setForm((s) => ({ ...s, [k]: e.target.value }));
-
-  async function onSave() {
-    if (!form.productName.trim()) {
-      alert("Введите название");
-      return;
-    }
-    setBusy(true);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr(null)
+    if (!v.productName?.trim()) { setErr('Введите название'); return }
+    setBusy(true)
     try {
-      const payload: any = {
-        productName: form.productName.trim(),
-        weight: form.weight || undefined,
-        composition: form.composition || undefined,
-        standard: form.standard || undefined,
-        shelfLife: form.shelfLife || undefined,
-        manufacturedAt: toISO(form.manufacturedAt),
-        packagedAt: toISO(form.packagedAt),
-        expiresAt: toISO(form.expiresAt),
-        proteins100g: numOrNull(form.proteins100g),
-        fats100g: numOrNull(form.fats100g),
-        carbs100g: numOrNull(form.carbs100g),
-        barcode: form.barcode || undefined,
-        barcodeType: "ean13",
-        folderId: form.folderId ? Number(form.folderId) : undefined,
-      };
-
-      // ожидаем, что create возвращает созданный Label
-      const created: any = await create(payload);
-      const newId: number | undefined = created?.id;
-      if (newId) onCreated?.(newId);
-      onClose();
+      await onCreate({
+        productName: v.productName?.trim(),
+        folderId: v.folderId ?? null,
+        weight: v.weight ?? null,
+        composition: v.composition ?? null,
+        proteins100g: num(String(v.proteins100g ?? '')),
+        fats100g: num(String(v.fats100g ?? '')),
+        carbs100g: num(String(v.carbs100g ?? '')),
+        standard: v.standard ?? null,
+        shelfLife: v.shelfLife ?? null,
+        barcode: v.barcode ?? null,
+      })
+      onClose()
+    } catch (e: any) {
+      setErr(e?.message ?? String(e))
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Новая этикетка"
-      maxWidthClass="max-w-5xl"
-    >
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
-          <label className="block text-sm">Название *</label>
-          <input
-            className="border px-3 py-2 rounded w-full"
-            value={form.productName}
-            onChange={set("productName")}
-          />
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <form onSubmit={submit} className="w-full max-w-2xl bg-white rounded-2xl p-5 shadow">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Новая этикетка</h2>
+          <button type="button" onClick={onClose} className="px-3 py-1 rounded-lg border">✕</button>
         </div>
 
-        <div>
-          <label className="block text-sm">Масса</label>
-          <input
-            className="border px-3 py-2 rounded w-full"
-            value={form.weight}
-            onChange={set("weight")}
-          />
+        {err && <div className="text-rose-600 text-sm mb-3">{err}</div>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="block text-sm">Название</label>
+            <input className="w-full border rounded-lg px-3 py-2"
+              value={v.productName ?? ''} onChange={e => setV(s => ({ ...s, productName: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Папка</label>
+            <select className="w-full border rounded-lg px-3 py-2"
+              value={v.folderId ?? ''} onChange={e => setV(s => ({ ...s, folderId: e.target.value === '' ? null : Number(e.target.value) }))}>
+              <option value="">— без папки —</option>
+              {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm">Масса</label>
+            <input className="w-full border rounded-lg px-3 py-2"
+              value={v.weight ?? ''} onChange={e => setV(s => ({ ...s, weight: e.target.value }))} />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-sm">Состав</label>
+            <textarea className="w-full border rounded-lg px-3 py-2"
+              value={v.composition ?? ''} onChange={e => setV(s => ({ ...s, composition: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Белки, г/100</label>
+            <input type="number" step="0.1" className="w-full border rounded-lg px-3 py-2"
+              value={v.proteins100g ?? ''} onChange={e => setV(s => ({ ...s, proteins100g: e.target.value === '' ? null : Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Жиры, г/100</label>
+            <input type="number" step="0.1" className="w-full border rounded-lg px-3 py-2"
+              value={v.fats100g ?? ''} onChange={e => setV(s => ({ ...s, fats100g: e.target.value === '' ? null : Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Углеводы, г/100</label>
+            <input type="number" step="0.1" className="w-full border rounded-lg px-3 py-2"
+              value={v.carbs100g ?? ''} onChange={e => setV(s => ({ ...s, carbs100g: e.target.value === '' ? null : Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="block text-sm">СТБ/ГОСТ</label>
+            <input className="w-full border rounded-lg px-3 py-2"
+              value={v.standard ?? ''} onChange={e => setV(s => ({ ...s, standard: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Срок годности</label>
+            <input className="w-full border rounded-lg px-3 py-2"
+              value={v.shelfLife ?? ''} onChange={e => setV(s => ({ ...s, shelfLife: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm">Штрих-код (опционально)</label>
+            <input className="w-full border rounded-lg px-3 py-2"
+              value={v.barcode ?? ''} onChange={e => setV(s => ({ ...s, barcode: e.target.value }))} />
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm">Папка</label>
-          <select
-            className="border px-3 py-2 rounded w-full"
-            value={form.folderId ?? ""}
-            onChange={set("folderId")}
-          >
-            <option value="">Без папки</option>
-            {folders.map((f: Folder) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="col-span-2">
-          <label className="block text-sm">Состав</label>
-          <textarea
-            className="border px-3 py-2 rounded w-full h-24"
-            value={form.composition}
-            onChange={set("composition")}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm">Белки (г/100г)</label>
-          <input
-            type="number"
-            step="0.1"
-            className="border px-3 py-2 rounded w-full"
-            value={form.proteins100g}
-            onChange={set("proteins100g")}
-          />
-        </div>
-        <div>
-          <label className="block text-sm">Жиры (г/100г)</label>
-          <input
-            type="number"
-            step="0.1"
-            className="border px-3 py-2 rounded w-full"
-            value={form.fats100g}
-            onChange={set("fats100g")}
-          />
-        </div>
-        <div>
-          <label className="block text-sm">Углеводы (г/100г)</label>
-          <input
-            type="number"
-            step="0.1"
-            className="border px-3 py-2 rounded w-full"
-            value={form.carbs100g}
-            onChange={set("carbs100g")}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm">СТБ / ГОСТ</label>
-          <input
-            className="border px-3 py-2 rounded w-full"
-            value={form.standard}
-            onChange={set("standard")}
-          />
-        </div>
-        <div>
-          <label className="block text-sm">Срок годности (текст)</label>
-          <input
-            className="border px-3 py-2 rounded w-full"
-            value={form.shelfLife}
-            onChange={set("shelfLife")}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm">Изготовлено (дата)</label>
-          <input
-            type="date"
-            className="border px-3 py-2 rounded w-full"
-            value={form.manufacturedAt}
-            onChange={set("manufacturedAt")}
-          />
-        </div>
-        <div>
-          <label className="block text-sm">Упаковано (дата)</label>
-          <input
-            type="date"
-            className="border px-3 py-2 rounded w-full"
-            value={form.packagedAt}
-            onChange={set("packagedAt")}
-          />
-        </div>
-        <div>
-          <label className="block text-sm">Годен до (дата)</label>
-          <input
-            type="date"
-            className="border px-3 py-2 rounded w-full"
-            value={form.expiresAt}
-            onChange={set("expiresAt")}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm">
-            Штрих-код (EAN-13, пусто = авто)
-          </label>
-          <input
-            className="border px-3 py-2 rounded w-full"
-            value={form.barcode}
-            onChange={set("barcode")}
-          />
-        </div>
-
-        <div className="col-span-2 flex gap-2 justify-end mt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded border bg-white hover:bg-slate-50"
-          >
-            Отмена
-          </button>
-          <button
-            onClick={onSave}
-            disabled={busy}
-            className="px-4 py-2 rounded border border-sky-600 bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
-          >
+        <div className="flex justify-end gap-2 mt-4">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border">Отмена</button>
+          <button disabled={busy} className="px-4 py-2 rounded-lg bg-sky-300 text-black border border-sky-400 hover:bg-sky-400 disabled:opacity-50">
             Создать
           </button>
         </div>
-      </div>
-    </Modal>
-  );
+      </form>
+    </div>
+  )
 }

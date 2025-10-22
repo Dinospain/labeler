@@ -1,55 +1,68 @@
+// src/pdf/render.ts
 import fs from 'fs/promises'
 import path from 'path'
 import * as handlebars from 'handlebars'
-import bwip from 'bwip-js'
+import bwipjs from 'bwip-js'
 import puppeteer from 'puppeteer'
 import { prisma } from '../prisma/client'
 
-/**
- * Опции рендера
- */
+/** Опции рендера */
 export type RenderOptions = {
   ids?: number[]
   all?: boolean
   size?: '58x40' | '100x70' | string
-  perRow?: number
+  perRow?: number // зарезервировано под раскладку по несколько в ряд
+}
+
+/* ======================= ЗАГРУЗКА ШАБЛОНА ======================= */
+
+/** Подправляем старые плейсхолдеры в HTML (src="barcode" → src="{{this.barcodeDataUrl}}") */
+function fixupTemplate(html: string): string {
+  let out = html
+  // 1) Любые заглушки для картинки → правильный data-url плейсхолдер
+  out = out.replace(/src=["']\s*barcode\s*["']/gi, 'src="{{this.barcodeDataUrl}}"')
+  out = out.replace(/src=["']\s*{{\s*(this\.)?barcode\s*}}\s*["']/gi, 'src="{{this.barcodeDataUrl}}"')
+  // 2) Удаляем явную «ручную» строку цифр под штрихкодом (div/span/p с {{barcode}})
+  out = out.replace(/<([a-z]+)([^>]*)>\s*{{\s*(this\.)?barcode\s*}}\s*<\/\1>/gis, '')
+  // 3) На всякий случай — вырезаем любой одиночный {{barcode}} где бы он ни стоял
+  out = out.replace(/{{\s*(this\.)?barcode\s*}}/gi, '')
+  // 4) Старый класс "digits" (если остался) — сносим целиком
+  out = out.replace(/<[^>]*class=["'][^"']*\bdigits\b[^"']*["'][^>]*>.*?<\/[^>]+>/gis, '')
+  return out
 }
 
 /**
- * Безопасный load шаблона:
- * 1) из БД: Template (берём последний активный / или последний по updatedAt)
- * 2) из файла по TEMPLATE_PATH
- * 3) если нет — даём встроенный минимальный шаблон (100×70)
+ * 1) Берём последний Template из БД (по updatedAt)
+ * 2) Иначе файл TEMPLATE_PATH
+ * 3) Иначе встроенный default
  */
 async function loadTemplateHtml(): Promise<string> {
-    // 1) БД: берём самый свежий по updatedAt
   try {
-    const last = await prisma.template.findFirst({
-      orderBy: { updatedAt: 'desc' },
-    })
-    if (last?.html && last.html.trim().length > 0) {
-      return last.html
+    const last = await prisma.template.findFirst({ orderBy: { updatedAt: 'desc' } })
+    if (last?.html && last.html.trim()) {
+      console.log('[TEMPLATE] source=database id=', last.id)
+      return fixupTemplate(last.html)
     }
   } catch {
-    // игнор — пойдём дальше
+    /* ignore */
   }
-  // 2) файл
+
   const p = process.env.TEMPLATE_PATH ?? './templates/default.html'
   try {
     const html = await fs.readFile(path.resolve(p), 'utf8')
-    if (html.trim()) return html
+    if (html.trim()) {
+      console.log('[TEMPLATE] source=file path=', path.resolve(p))
+      return fixupTemplate(html)
+    }
   } catch {
-    // игнор — дадим бандл-шаблон
+    /* ignore */
   }
 
-  // 3) встроенный
+  console.log('[TEMPLATE] source=bundled-default')
   return defaultTemplateHtml()
 }
 
-/**
- * Встроенный простой шаблон 100×70 (10×7 см)
- * — небольшой, универсальный, с минимальными стилями
- */
+/** Встроенный HTML-шаблон 100×70 (10×7 см) */
 function defaultTemplateHtml(): string {
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -81,7 +94,6 @@ function defaultTemplateHtml(): string {
 
   .barcode { text-align:center; align-self:end; }
   .barcode img { width:100%; height:auto; display:block; }
-  .digits { font-size: 6pt !important; margin-top: 0.3mm; letter-spacing: .2pt; }
 </style>
 </head>
 <body>
@@ -107,16 +119,12 @@ function defaultTemplateHtml(): string {
           {{#if this.packagedAt}}Упаковано: {{this.packagedAt}}{{/if}}
           {{#if this.expiresAt}}; Годен до: {{this.expiresAt}}{{/if}}
         </div>
-        <div class="tiny">Адрес: {{this.address}}</div>
-        <div class="tiny">{{this.mchsInfo}}</div>
-        <div class="tiny">Сайт: {{this.website}}</div>
       </div>
 
       <div class="barcode">
         {{#if this.barcodeDataUrl}}
           <img src="{{this.barcodeDataUrl}}" alt="EAN-13" />
         {{/if}}
-        <div class="digits">{{this.barcode}}</div>
       </div>
     </div>
   </div>
@@ -125,10 +133,9 @@ function defaultTemplateHtml(): string {
 </html>`
 }
 
-/**
- * EAN-13 checksum + нормализация.
- * Если пришло меньше 12 цифр — добиваем нулями слева; если больше — берём первые 12.
- */
+/* ======================= УТИЛИТЫ ======================= */
+
+/** Нормализация к EAN-13 с вычислением контрольной цифры */
 function ensureEan13(input?: string | null): string {
   const base = (input || '').replace(/\D/g, '')
   const digits = (base.length >= 12 ? base : (base + '000000000000')).slice(0, 12)
@@ -138,25 +145,35 @@ function ensureEan13(input?: string | null): string {
   return digits + String(check)
 }
 
-/**
- * Баркод как SVG data URL — это заметно снижает вес PDF.
- */
-async function makeBarcodeDataUrl(text?: string | null, compact = true): Promise<string> {
-  const svgBuf = await bwip.toBuffer({
-    bcid: 'ean13',
-    text: ensureEan13(text),
-    scale: compact ? 2.0 : 2.4,
-    height: compact ? 8 : 9,
-    includetext: false,
-    textxalign: 'center',
-    svg: true,
-  } as any)
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svgBuf.toString('utf8'))}`
+/** Человекочитаемая подпись EAN-13: "D XXXXXX XXXXXX" */
+function formatEanHuman(ean: string): string {
+  const s = ean.replace(/\D/g, '').padStart(13, '0').slice(0, 13)
+  return `${s[0]} ${s.slice(1, 7)} ${s.slice(7, 13)}`
 }
 
-/**
- * Энергетическая ценность из Б/Ж/У
- */
+/** Генерация штрих-кода (PNG data URL), строго EAN-13 */
+async function makeBarcodeDataUrl(text?: string | null, compact = true): Promise<string> {
+  const ean = ensureEan13(text)
+  const buf = await bwipjs.toBuffer({
+    bcid: 'ean13',
+    text: ean,
+    alttext: formatEanHuman(ean),
+    includetext: true,
+    guardwhitespace: true,
+    scale: compact ? 3 : 4,
+    height: compact ? 12 : 14,
+    textsize: compact ? 10 : 11,
+
+    // ↓ Добавляем точную настройку подписи
+    textxalign: 'center',   // выравнивание по центру
+    textxoffset: -7,        // немного левее (отрицательное — влево)
+    textyoffset: -3,        // немного выше (отрицательное — вверх)
+  } as any)
+  return `data:image/png;base64,${buf.toString('base64')}`
+}
+
+
+/** Энергетическая ценность из Б/Ж/У */
 function calcEnergyText(p?: number | null, f?: number | null, c?: number | null): string {
   const proteins = Number(p ?? 0)
   const fats = Number(f ?? 0)
@@ -166,9 +183,7 @@ function calcEnergyText(p?: number | null, f?: number | null, c?: number | null)
   return `${kcal} ккал / ${kJ} кДж`
 }
 
-/**
- * Человекочитаемая дата (если не null)
- */
+/** Дата в формате DD.MM.YYYY (если задана) */
 function formatDate(d?: string | Date | null): string | undefined {
   if (!d) return undefined
   const date = typeof d === 'string' ? new Date(d) : d
@@ -179,50 +194,41 @@ function formatDate(d?: string | Date | null): string | undefined {
   return `${dd}.${mm}.${yy}`
 }
 
-/**
- * Подготовить данные этикеток: рассчитать barcode/energy, формат дат, заглушки.
- */
+/** Подготовка данных этикеток для шаблона */
 async function mapLabelsForTemplate(labels: any[], compactBarcode: boolean) {
   const mapped = await Promise.all(
     labels.map(async (l) => {
-      const autoBase = String(200000000000 + Number(l.id || 0)) // стабильная база
+      const autoBase = String(200000000000 + Number(l.id || 0))
       const barcode = ensureEan13(l.barcode ? String(l.barcode) : autoBase)
       const barcodeDataUrl = await makeBarcodeDataUrl(barcode, compactBarcode)
-
       return {
         ...l,
         manufacturedAt: formatDate(l.manufacturedAt),
         packagedAt: formatDate(l.packagedAt),
         expiresAt: formatDate(l.expiresAt),
         energyText: calcEnergyText(l.proteins100g, l.fats100g, l.carbs100g),
-        barcode,
-        barcodeDataUrl,
-        address: l.address ?? 'Адрес: Республика Беларусь, г. Минск, ул. Примерная, 1',
-        mchsInfo: l.mchsInfo ?? 'МЧС: в случае ЧС звоните 101 или 112',
-        website: l.website ?? 'https://example.by',
+        barcode,          // подпись под штрихами рисует bwip-js; поле оставляем на всякий случай
+        barcodeDataUrl,   // data:image/png;base64,...
       }
     })
   )
   return mapped
 }
 
-/**
- * Собрать финальный HTML, используя Handlebars.
- */
+/** Компилируем Handlebars */
 async function buildHtml(payload: { labels: any[] }, tplHtml: string): Promise<string> {
   const tpl = handlebars.compile(tplHtml, { noEscape: true })
   return tpl(payload)
 }
 
-/**
- * Основной экспорт: отрисовка PDF по ids|all, с заданным размером страницы.
- */
+/* ======================= ОСНОВНОЙ РЕНДЕР ======================= */
+
 export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer> {
   const size = (options.size ?? '').toLowerCase()
   const is58x40 = size === '58x40'
-  const is100x70 = size === '100x70' || size === '10x7' // разрешим синоним
+  const is100x70 = size === '100x70' || size === '10x7'
 
-  // Получаем записи
+  // 1) Получаем записи
   let labels: any[] = []
   if (options.all) {
     labels = await prisma.label.findMany({ orderBy: { id: 'asc' } })
@@ -231,17 +237,15 @@ export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer>
       where: { id: { in: options.ids } },
       orderBy: { id: 'asc' },
     })
-  } else {
-    labels = [] // пусто — вернём PDF с пустым телом
   }
 
-  // Подготовка данных + шаблон
+  // 2) Готовим данные + загружаем шаблон
   const compactBarcode = is58x40 || is100x70
   const prepared = await mapLabelsForTemplate(labels, compactBarcode)
   const tplHtml = await loadTemplateHtml()
   const html = await buildHtml({ labels: prepared }, tplHtml)
 
-  // Puppeteer
+  // 3) Рендерим PDF Puppeteer'ом
   const browser = await puppeteer.launch({
     args: ['--no-sandbox', '--font-render-hinting=medium'],
   })
@@ -249,27 +253,25 @@ export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer>
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'networkidle0' })
 
-    // Для этикеток фоновую печать часто отключаем (экономит размер)
     const printBackground = false
-
     const pdfBuffer = await page.pdf(
       is58x40
         ? {
-            width: '58mm',
-            height: '40mm',
-            margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
-            printBackground,
-            preferCSSPageSize: true,
-          }
+          width: '58mm',
+          height: '40mm',
+          margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+          printBackground,
+          preferCSSPageSize: true,
+        }
         : is100x70
-        ? {
+          ? {
             width: '100mm',
             height: '70mm',
             margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
             printBackground,
             preferCSSPageSize: true,
           }
-        : {
+          : {
             format: 'A4',
             margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
             printBackground: true,
@@ -284,13 +286,7 @@ export async function renderLabelsToPdf(options: RenderOptions): Promise<Buffer>
   }
 }
 
-/**
- * Удобный HTTP-хелпер: можно вызвать из роута.
- * Пример использования:
- *   const buf = await renderLabelsToPdfFromRequest(req);
- *   res.setHeader('Content-Type', 'application/pdf');
- *   res.send(buf);
- */
+/** Хелпер для HTTP-роута */
 export async function renderLabelsToPdfFromRequest(req: any): Promise<Buffer> {
   const idsParam = (req.query.ids as string | undefined)?.trim()
   const all = String(req.query.all ?? '').toLowerCase() === 'true'
