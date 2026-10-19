@@ -65,7 +65,7 @@ export default function PrintModal({
             </button>
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600"
+              className="px-4 py-2 rounded-xl bg-sky-300 hover:bg-sky-400 text-black border border-sky-400"
             >
               Печать
             </button>
@@ -84,7 +84,7 @@ export default function PrintModal({
               title="PDF preview"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-500">
+            <div className="w-full h-full flex items-center justify-center text-slate-700">
               Подготовка предпросмотра…
             </div>
           )}

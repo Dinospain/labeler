@@ -109,7 +109,7 @@ export default function LabelsPage() {
             placeholder="Поиск"
             className="w-full rounded-xl border px-10 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
-          <span className="absolute left-3 top-3 text-slate-400">🔎</span>
+          <span className="absolute left-3 top-3 text-slate-600">🔎</span>
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <button

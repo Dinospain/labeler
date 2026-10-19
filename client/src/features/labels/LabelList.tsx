@@ -10,10 +10,10 @@ type Props = {
 
 export default function LabelList({ labels, loading, selectedId, onSelect, onOpen }: Props) {
   if (loading) {
-    return <div className="h-48 flex items-center justify-center text-slate-500">Загрузка…</div>
+    return <div className="h-48 flex items-center justify-center text-slate-700">Загрузка…</div>
   }
   if (labels.length === 0) {
-    return <div className="h-48 flex items-center justify-center text-slate-500" data-testid="labels-empty">Пусто</div>
+    return <div className="h-48 flex items-center justify-center text-slate-700" data-testid="labels-empty">Пусто</div>
   }
   return (
     <ul className="divide-y" data-testid="label-list">
@@ -31,7 +31,7 @@ export default function LabelList({ labels, loading, selectedId, onSelect, onOpe
               }`}
             >
               <span className="truncate">{l.productName}</span>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-slate-700">
                 {l.updatedAt ? new Date(l.updatedAt).toLocaleDateString() : '—'}
               </span>
             </button>

@@ -59,7 +59,7 @@ export default function Login() {
                         </select>
                     </div>
 
-                    <div className="text-center text-sm text-slate-400">или</div>
+                    <div className="text-center text-sm text-slate-600">или</div>
 
                     <div>
                         <label className="block text-sm mb-1">Введите slug вручную</label>
@@ -84,14 +84,14 @@ export default function Login() {
                         <button
                             type="button"
                             onClick={logout}
-                            className="px-4 py-2 rounded-xl bg-gray-200 text-black hover:bg-gray-300 border border-gray-300"
+                            className="px-4 py-2 rounded-xl bg-gray-200 text-black hover:bg-gray-300 border border-slate-400"
                         >
                             Сбросить
                         </button>
                     </div>
                 </form>
 
-                <div className="text-xs text-slate-400 mt-4">
+                <div className="text-xs text-slate-600 mt-4">
                     Подготовленные предприятия: <b>Хлебозавод</b> (slug: <code>hlebzavod</code>) и <b>Ресторан</b> (slug: <code>restaurant</code>).
                 </div>
             </div>
