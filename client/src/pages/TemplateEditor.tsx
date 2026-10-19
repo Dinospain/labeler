@@ -1,59 +1,99 @@
 import { useEffect, useState } from 'react'
+import { errorMessage } from '../api/client'
+import { useTemplatesStore } from '../store/templates'
+import { getAccountSlug } from '../utils/account'
+
+const btn = 'px-4 py-2 rounded border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-50'
 
 export default function TemplateEditor() {
+  const { templates, loading, error: loadError, fetch, update, makeCurrent } = useTemplatesStore()
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [html, setHtml] = useState('')
-  const [id, setId] = useState<number | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // загрузка текущего шаблона
+  useEffect(() => { void fetch() }, [fetch])
+
+  // по умолчанию открываем текущий шаблон (или первый)
   useEffect(() => {
-    fetch('/api/templates')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setHtml(data[0].html || '')
-          setId(data[0].id)
-        }
-      })
-  }, [])
+    if (selectedId !== null || templates.length === 0) return
+    const t = templates.find((x) => x.isCurrent) ?? templates[0]
+    setSelectedId(t.id)
+    setHtml(t.html)
+  }, [templates, selectedId])
 
-  // функция сохранения — вот её не хватало
-  const save = async () => {
-    if (!id) return alert('Нет активного шаблона')
-    const res = await fetch(`/api/templates/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html }),
-    })
-    if (res.ok) {
-      alert('Шаблон сохранён ✅')
-    } else {
-      alert('Ошибка сохранения шаблона')
+  const selected = templates.find((t) => t.id === selectedId) ?? null
+
+  const select = (id: number) => {
+    setSelectedId(id)
+    setHtml(templates.find((t) => t.id === id)?.html ?? '')
+    setMessage(null)
+    setError(null)
+  }
+
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    setMessage(null)
+    setError(null)
+    try {
+      await fn()
+      setMessage(ok)
+    } catch (e) {
+      setError(errorMessage(e))
     }
   }
 
+  const save = () => selected && run(() => update(selected.id, { html }), 'Шаблон сохранён')
+  const setCurrent = () => selected && run(() => makeCurrent(selected.id), 'Шаблон назначен текущим')
+
+  // предпросмотр печатает все этикетки аккаунта текущим шаблоном
+  const preview = () => {
+    const qs = new URLSearchParams({ size: '58x40' })
+    const slug = getAccountSlug()
+    if (slug) qs.set('account', slug)
+    window.open(`/api/print?${qs.toString()}`, '_blank')
+  }
+
+  const shownError = error ?? loadError
+
   return (
-    <div className="flex flex-col gap-4 h-full">
-      <div className="flex gap-3 items-center">
-        <button
-          onClick={save}
-          className="px-4 py-2 rounded border border-gray-300 bg-white text-black hover:bg-gray-100"
+    <div className="flex flex-col gap-4 h-full" data-testid="template-editor">
+      <div className="flex flex-wrap gap-3 items-center">
+        <select
+          data-testid="template-select"
+          className="border border-gray-300 rounded px-3 py-2 bg-white"
+          value={selectedId ?? ''}
+          onChange={(e) => select(Number(e.target.value))}
         >
-          Сохранить
-        </button>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}{t.isCurrent ? ' (текущий)' : ''}</option>
+          ))}
+        </select>
+        <button data-testid="template-save" disabled={!selected} onClick={save} className={btn}>Сохранить</button>
         <button
-          onClick={() =>
-            window.open('/api/print?all=true&size=58x40', '_blank')
-          }
-          className="px-4 py-2 rounded border border-gray-300 bg-white text-black hover:bg-gray-100"
+          data-testid="template-make-current"
+          disabled={!selected || selected.isCurrent}
+          onClick={setCurrent}
+          className={btn}
         >
-          Печать предпросмотра
+          Сделать текущим
         </button>
+        <button data-testid="template-preview" onClick={preview} className={btn}>Печать предпросмотра</button>
       </div>
 
+      {shownError && <div data-testid="template-error" className="text-rose-600 text-sm">{shownError}</div>}
+      {message && <div data-testid="template-message" className="text-emerald-700 text-sm">{message}</div>}
+      {!loading && templates.length === 0 && !shownError && (
+        <div data-testid="templates-empty" className="text-sm text-slate-500">
+          У предприятия нет шаблонов — используется шаблон по умолчанию.
+        </div>
+      )}
+
       <textarea
+        data-testid="template-html"
         value={html}
         onChange={(e) => setHtml(e.target.value)}
-        className="flex-1 border border-gray-300 rounded p-3 font-mono text-sm"
+        disabled={!selected}
+        className="flex-1 min-h-[24rem] border border-gray-300 rounded p-3 font-mono text-sm"
         spellCheck="false"
       />
     </div>

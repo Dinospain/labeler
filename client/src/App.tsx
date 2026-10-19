@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom"
 import Header from "./components/Header"
 import LabelsPage from "./pages/LabelsPage"
 import Login from "./pages/Login"
+import TemplateEditor from "./pages/TemplateEditor"
 import { getAccountSlug } from "./utils/account"
 
 function RequireAccount() {
@@ -30,7 +31,7 @@ export default function App() {
       {/* Все остальные страницы — под RequireAccount */}
       <Route element={<RequireAccount />}>
         <Route path="/" element={<LabelsPage />} />
-        {/* при необходимости здесь же добавляйте другие защищённые маршруты */}
+        <Route path="/templates" element={<TemplateEditor />} />
       </Route>
 
       {/* Любое неизвестное — в корень (а там сработает гард) */}

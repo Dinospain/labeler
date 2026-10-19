@@ -17,12 +17,13 @@ src/            Express + TypeScript API (CommonJS, ts-node-dev)
 prisma/         schema.prisma (PostgreSQL) + migrations
 templates/      default.html, label-58x40.html (Handlebars label templates)
 test/           API tests (*.api.test.ts, supertest + real Postgres; globalSetup runs prisma migrate reset!)
-scripts/        seed-accounts.ts, purge-default.ts, create-account.js
+scripts/        seed-accounts.ts, purge-default.ts, create-account.ts
+e2e/            Playwright specs (auth, labels, templates); playwright.config.ts builds and starts the app on :8081
 client/         Vite + React 19 + Tailwind 4 + zustand + react-router (separate package.json)
   src/api/        client.ts (request<T>: X-Account header, error mapping, 204) + labels/folders/templates/auth
   src/features/   labels (useLabels, LabelList, LabelForm, pure labelForm/labelList), folders (useFolders, FolderPanel), print (PrintModal, printUrl)
-  src/store/      templates.ts only (zustand; used by the unrouted TemplateEditor)
-  src/pages/      Login, LabelsPage (composition), TemplateEditor (unrouted)
+  src/store/      templates.ts only (zustand; used by TemplateEditor)
+  src/pages/      Login, LabelsPage (composition), TemplateEditor (/templates, account-scoped)
   src/components/ Modal, ConfirmDialog, PromptDialog, Header
   src/utils/account.ts   account slug in localStorage
 ```
@@ -37,10 +38,10 @@ None real: "login" just stores an account slug; API trusts the `X-Account` heade
 
 ## Commands
 
-Root (API): `npm run dev` (port 8080), `npm run build` (tsc -> dist), `npm start`, `npm run prisma:migrate|prisma:generate|prisma:studio`, `npm run seed`.
+Root (API): `npm run dev` (port 8080), `npm run build` (tsc -> dist), `npm start`, `npm run prisma:migrate|prisma:generate|prisma:studio`, `npm run seed`, `npm run create-account -- "<Name>" <slug>`, `npm run test:e2e` (Playwright; resets the DB at `DATABASE_URL`, builds both apps, serves on :8081; Chromium path via `PLAYWRIGHT_CHROMIUM_PATH`, default `/opt/pw-browsers/chromium` outside CI).
 Client (`cd client`): `npm run dev` (port 5173, proxies `/api` to 8080), `npm run build`, `npm run lint`.
 Requires `.env` with `DATABASE_URL` (Postgres); see `.env.example`. Puppeteer needs Chromium.
-Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src/**/*.test.ts`), `npm run test:api` (Vitest + real throwaway Postgres via `DATABASE_URL`; resets the DB; includes a real-Chromium PDF smoke test, skip with `SKIP_PDF=1`, Chromium path via `PUPPETEER_EXECUTABLE_PATH`); client has `npm test`. CI: `.github/workflows/ci.yml`. Remaining refactor work (Phase 5) and handoff notes: see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
+Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src/**/*.test.ts`), `npm run test:api` (Vitest + real throwaway Postgres via `DATABASE_URL`; resets the DB; includes a real-Chromium PDF smoke test, skip with `SKIP_PDF=1`, Chromium path via `PUPPETEER_EXECUTABLE_PATH`); client has `npm test`. CI: `.github/workflows/ci.yml`. Refactor history and handoff notes: see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
 
 ## Print flow
 
@@ -49,8 +50,6 @@ Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src
 ## Known problems (refactor targets)
 
 - `barcodeType` forced to `ean13`; `extra` not exposed by the API.
-- Client: `TemplateEditor` is unrouted and calls the ignored `?all=true` (Phase 5, D5); `axios` is an unused dependency.
-- `scripts/create-account.js` requires `dist/` build.
 
 ## Conventions
 

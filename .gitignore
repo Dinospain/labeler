@@ -6,4 +6,5 @@ node_modules
 
 /dist
 /playwright-report
+/client/playwright-report
 /test-results
