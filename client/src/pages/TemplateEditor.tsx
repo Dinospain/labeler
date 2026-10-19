@@ -3,7 +3,7 @@ import { errorMessage } from '../api/client'
 import { useTemplatesStore } from '../store/templates'
 import { getAccountSlug } from '../utils/account'
 
-const btn = 'px-4 py-2 rounded border border-gray-300 bg-white text-black hover:bg-gray-100 disabled:opacity-50'
+const btn = 'px-4 py-2 rounded border border-slate-400 bg-white text-black hover:bg-gray-100 disabled:opacity-50'
 
 export default function TemplateEditor() {
   const { templates, loading, error: loadError, fetch, update, makeCurrent } = useTemplatesStore()
@@ -60,7 +60,7 @@ export default function TemplateEditor() {
       <div className="flex flex-wrap gap-3 items-center">
         <select
           data-testid="template-select"
-          className="border border-gray-300 rounded px-3 py-2 bg-white"
+          className="border border-slate-400 rounded px-3 py-2 bg-white"
           value={selectedId ?? ''}
           onChange={(e) => select(Number(e.target.value))}
         >
@@ -83,7 +83,7 @@ export default function TemplateEditor() {
       {shownError && <div data-testid="template-error" className="text-rose-600 text-sm">{shownError}</div>}
       {message && <div data-testid="template-message" className="text-emerald-700 text-sm">{message}</div>}
       {!loading && templates.length === 0 && !shownError && (
-        <div data-testid="templates-empty" className="text-sm text-slate-500">
+        <div data-testid="templates-empty" className="text-sm text-slate-700">
           У предприятия нет шаблонов — используется шаблон по умолчанию.
         </div>
       )}
@@ -93,7 +93,7 @@ export default function TemplateEditor() {
         value={html}
         onChange={(e) => setHtml(e.target.value)}
         disabled={!selected}
-        className="flex-1 min-h-[24rem] border border-gray-300 rounded p-3 font-mono text-sm"
+        className="flex-1 min-h-[24rem] border border-slate-400 rounded p-3 font-mono text-sm"
         spellCheck="false"
       />
     </div>
