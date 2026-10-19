@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import { errorMessage } from '../api/client'
 import type { Template } from '../types'
-import { api } from '../api'
+import { templatesApi } from '../api/templates'
 
 type State = {
   templates: Template[]
@@ -20,17 +21,17 @@ export const useTemplatesStore = create<State>((set) => ({
   fetch: async () => {
     set({ loading: true, error: null })
     try {
-      const items = await api.getTemplates()
+      const items = await templatesApi.list()
       set({ templates: items })
-    } catch (e: any) {
-      set({ error: e?.message ?? String(e) })
+    } catch (e) {
+      set({ error: errorMessage(e) })
     } finally {
       set({ loading: false })
     }
   },
 
   create: async (name, html, isCurrent = false) => {
-    const created = await api.createTemplate({ name, html, isCurrent })
+    const created = await templatesApi.create({ name, html, isCurrent })
     set((s) => {
       // если сделали текущим — снимем флаг у остальных на клиенте
       const next = isCurrent ? s.templates.map(t => ({ ...t, isCurrent: false })) : s.templates
@@ -40,7 +41,7 @@ export const useTemplatesStore = create<State>((set) => ({
   },
 
   makeCurrent: async (id) => {
-    const updated = await api.makeTemplateCurrent(id)
+    const updated = await templatesApi.makeCurrent(id)
     set((s) => ({
       templates: s.templates.map(t => ({ ...t, isCurrent: t.id === id }))
     }))
@@ -48,7 +49,7 @@ export const useTemplatesStore = create<State>((set) => ({
   },
 
   update: async (id, data) => {
-    const updated = await api.updateTemplate(id, data)
+    const updated = await templatesApi.update(id, data)
     set((s) => ({
       templates: s.templates.map(t => (t.id === id ? updated : t))
     }))

@@ -20,10 +20,9 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // TODO(Phase 4): вернуть в error после рефакторинга клиента (docs/REFACTOR_PLAN.md)
-      '@typescript-eslint/no-explicit-any': 'warn',
-      'no-empty': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
+      'no-empty': 'error',
+      '@typescript-eslint/no-unused-vars': 'error',
     },
   },
 ])

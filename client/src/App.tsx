@@ -1,7 +1,7 @@
 // client/src/App.tsx
 import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom"
 import Header from "./components/Header"
-import LabelsFourPanels from "./pages/LabelsFourPanels"
+import LabelsPage from "./pages/LabelsPage"
 import Login from "./pages/Login"
 import { getAccountSlug } from "./utils/account"
 
@@ -29,7 +29,7 @@ export default function App() {
 
       {/* Все остальные страницы — под RequireAccount */}
       <Route element={<RequireAccount />}>
-        <Route path="/" element={<LabelsFourPanels />} />
+        <Route path="/" element={<LabelsPage />} />
         {/* при необходимости здесь же добавляйте другие защищённые маршруты */}
       </Route>
 
