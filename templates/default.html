@@ -86,9 +86,9 @@
         </div>
       </div>
 
-      <div class="footer">{{this.address}}</div>
-      <div class="footer"><b>МЧС:</b> {{this.mchsInfo}}</div>
-      <div class="footer">Сайт: {{this.website}}</div>
+      {{#if this.address}}<div class="footer">{{this.address}}</div>{{/if}}
+      {{#if this.mchsInfo}}<div class="footer"><b>МЧС:</b> {{this.mchsInfo}}</div>{{/if}}
+      {{#if this.website}}<div class="footer">Сайт: {{this.website}}</div>{{/if}}
     </div>
     {{/each}}
   </div>

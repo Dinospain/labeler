@@ -1,6 +1,6 @@
 # Refactor & Test Plan
 
-Status: **Phases 0–2 done (see §0), Phases 3–5 open**. Written after a full read of `src/`, `client/src/`, `prisma/`, `scripts/`, `templates/`.
+Status: **Phases 0–3 done (see §0), Phases 4–5 open**. Written after a full read of `src/`, `client/src/`, `prisma/`, `scripts/`, `templates/`.
 Intended to be executed by a separate session, phase by phase. Each phase = one PR, CI green before the next.
 
 Ground rules for the implementer:
@@ -34,7 +34,9 @@ Ground rules for the implementer:
 - Client lint: `no-explicit-any`, `no-empty`, `no-unused-vars` are downgraded to warnings in `client/eslint.config.js` (TODO to restore to error in Phase 4).
 - `scripts/` (B20), client (B14–B19), `axios` removal, e2e: untouched.
 
-**Next: Phase 3** (B3, B4, B5, B10, B11, B12, template `{{#if}}` for address/МЧС/website, PDF smoke test), then 4 and 5 as written below. Keep `AGENTS.md` updated at the end of each phase.
+**Phase 3 done** (branch `claude/practical-einstein-lw50rc`): B3, B4, B5, B10, B11, B12 fixed. `renderLabelsToPdf({ accountId, ids, size })` (no `all`, filtered by account, throws `UnknownSizeError`); `loadTemplateHtml(accountId, size)`; `PdfRenderer` receives `accountId`; print route returns 400 for unknown size (`10x7` normalized to `100x70`); a4 removed from `sizes.ts`; `pdf/browser.ts` shared Chromium (closed in `index.ts` shutdown); Puppeteer request interception allows only `data:`; Handlebars escaping on; dates in UTC (D4 default). Templates: address/МЧС/website wrapped in `{{#if}}`; the hard-coded placeholder address/МЧС/site in `label-58x40.html` were replaced by the label fields. A DB template with `isCurrent` applies to every size (its own `@page` decides the page). `TEMPLATE_PATH` now only overrides the 100x70 file. Tests: `test/pdf.api.test.ts` (real Chromium + DB, `SKIP_PDF=1` to skip; CI `api` job now downloads Chromium). Chromium rounds page size to px (100mm → 282.96pt), so MediaBox is asserted with ±1pt.
+
+**Next: Phase 4**, then 5 as written below. Keep `AGENTS.md` updated at the end of each phase.
 
 ---
 

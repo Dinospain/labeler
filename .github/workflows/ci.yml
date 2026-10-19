@@ -47,9 +47,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: '1'
+      - run: npm ci # скачивает Chromium для PDF smoke-теста
       - run: npx prisma generate
       - run: npm run test:api
 

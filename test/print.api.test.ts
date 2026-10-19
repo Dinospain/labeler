@@ -17,14 +17,24 @@ describe('print', () => {
     const res = await as('a').get(`/api/print?ids=${l2.id},${l1.id},${foreign.id}`)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('application/pdf')
-    expect(fakePdf.calls).toEqual([{ ids: [l1.id, l2.id], size: '100x70' }])
+    expect(fakePdf.calls).toEqual([{ accountId: a.id, ids: [l1.id, l2.id], size: '100x70' }])
   })
 
   it('prints all own labels when ids are omitted, passes size', async () => {
     const l1 = await makeLabel(a.id)
     await makeLabel(b.id)
     await as('a').get('/api/print?size=58x40')
-    expect(fakePdf.calls).toEqual([{ ids: [l1.id], size: '58x40' }])
+    expect(fakePdf.calls).toEqual([{ accountId: a.id, ids: [l1.id], size: '58x40' }])
+  })
+
+  it('normalizes the 10x7 alias and rejects unknown sizes with 400 (B5)', async () => {
+    const l1 = await makeLabel(a.id)
+    await as('a').get('/api/print?size=10x7')
+    expect(fakePdf.calls).toEqual([{ accountId: a.id, ids: [l1.id], size: '100x70' }])
+    fakePdf.calls.length = 0
+    const res = await as('a').get('/api/print?size=a4')
+    expect(res.status).toBe(400)
+    expect(fakePdf.calls).toEqual([])
   })
 
   it('404 when nothing to print', async () => {

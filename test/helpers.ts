@@ -4,7 +4,7 @@ import { createApp } from '../src/app'
 
 export const prisma = new PrismaClient()
 
-export const fakePdf = { calls: [] as { ids: number[]; size: string }[] }
+export const fakePdf = { calls: [] as { accountId: number; ids: number[]; size: string }[] }
 
 export const app = createApp({
   prisma,

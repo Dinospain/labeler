@@ -75,10 +75,9 @@
             {{#if this.packagedAt}}Упаковано: {{this.packagedAt}}{{/if}}
           </div>
 
-          <!-- Заглушки (можно заменить позже данными из БД) -->
-          <div class="tiny foot">Адрес: Республика Беларусь, г. Минск, ул. Примерная, 1</div>
-          <div class="tiny">МЧС: при ЧС звоните 101 или 112</div>
-          <div class="tiny">Сайт: https://example.by</div>
+          {{#if this.address}}<div class="tiny foot">{{this.address}}</div>{{/if}}
+          {{#if this.mchsInfo}}<div class="tiny"><b>МЧС:</b> {{this.mchsInfo}}</div>{{/if}}
+          {{#if this.website}}<div class="tiny">Сайт: {{this.website}}</div>{{/if}}
         </div>
 
         <div class="barcode">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LABEL_SIZES, parseSize } from './sizes'
+import { LABEL_SIZES, TEMPLATE_FILES, parseSize } from './sizes'
 
 describe('parseSize', () => {
   it('parses known sizes case-insensitively', () => {
@@ -15,6 +15,6 @@ describe('parseSize', () => {
   it('has pdf options for every key', () => {
     expect(LABEL_SIZES['58x40']).toMatchObject({ width: '58mm', height: '40mm' })
     expect(LABEL_SIZES['100x70']).toMatchObject({ width: '100mm', height: '70mm' })
-    expect(LABEL_SIZES.a4).toMatchObject({ format: 'A4' })
+    expect(TEMPLATE_FILES).toEqual({ '58x40': 'label-58x40.html', '100x70': 'default.html' })
   })
 })
