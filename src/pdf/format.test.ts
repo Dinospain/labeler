@@ -2,9 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { calcEnergy, calcEnergyText, formatDate } from './format'
 
 describe('formatDate', () => {
-  it('formats Date and local-time strings as DD.MM.YYYY', () => {
-    expect(formatDate(new Date(2024, 0, 5))).toBe('05.01.2024')
-    expect(formatDate('2024-03-09T12:00:00')).toBe('09.03.2024')
+  it('formats Date and ISO strings as DD.MM.YYYY', () => {
+    expect(formatDate(new Date(Date.UTC(2024, 0, 5)))).toBe('05.01.2024')
+    expect(formatDate('2024-03-09T12:00:00Z')).toBe('09.03.2024')
+  })
+  it('formats in UTC regardless of server TZ (B12)', () => {
+    const prev = process.env.TZ
+    try {
+      for (const tz of ['America/New_York', 'Pacific/Auckland']) {
+        process.env.TZ = tz
+        expect(formatDate('2024-03-09T00:00:00.000Z')).toBe('09.03.2024')
+        expect(formatDate(new Date('2024-12-31T23:59:59Z'))).toBe('31.12.2024')
+      }
+    } finally {
+      if (prev === undefined) delete process.env.TZ
+      else process.env.TZ = prev
+    }
   })
   it('returns undefined for empty or invalid input', () => {
     expect(formatDate(null)).toBeUndefined()

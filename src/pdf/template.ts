@@ -2,6 +2,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { prisma } from '../prisma/client'
+import { TEMPLATE_FILES, type SizeKey } from './sizes'
 
 /** Подправляем старые плейсхолдеры в HTML (src="barcode" → src="{{this.barcodeDataUrl}}") */
 export function fixupTemplate(html: string): string {
@@ -18,27 +19,35 @@ export function fixupTemplate(html: string): string {
   return out
 }
 
+const TEMPLATES_DIR = path.resolve(__dirname, '../../templates')
+
 /**
- * 1) Берём последний Template из БД (по updatedAt)
- * 2) Иначе файл TEMPLATE_PATH
+ * 1) Текущий (isCurrent) шаблон аккаунта из БД
+ * 2) Иначе файл для размера (58x40 → label-58x40.html, 100x70 → TEMPLATE_PATH / default.html)
  * 3) Иначе встроенный default
  */
-export async function loadTemplateHtml(): Promise<string> {
+export async function loadTemplateHtml(accountId: number, size: SizeKey): Promise<string> {
   try {
-    const last = await prisma.template.findFirst({ orderBy: { updatedAt: 'desc' } })
-    if (last?.html && last.html.trim()) {
-      console.log('[TEMPLATE] source=database id=', last.id)
-      return fixupTemplate(last.html)
+    const current = await prisma.template.findFirst({
+      where: { accountId, isCurrent: true },
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (current?.html && current.html.trim()) {
+      console.log('[TEMPLATE] source=database id=', current.id)
+      return fixupTemplate(current.html)
     }
   } catch {
     /* ignore */
   }
 
-  const p = process.env.TEMPLATE_PATH ?? './templates/default.html'
+  const file =
+    size === '100x70' && process.env.TEMPLATE_PATH
+      ? path.resolve(process.env.TEMPLATE_PATH)
+      : path.join(TEMPLATES_DIR, TEMPLATE_FILES[size])
   try {
-    const html = await fs.readFile(path.resolve(p), 'utf8')
+    const html = await fs.readFile(file, 'utf8')
     if (html.trim()) {
-      console.log('[TEMPLATE] source=file path=', path.resolve(p))
+      console.log('[TEMPLATE] source=file path=', file)
       return fixupTemplate(html)
     }
   } catch {

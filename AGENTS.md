@@ -8,11 +8,11 @@ Multi-tenant web app for designing and printing product labels (food labels: com
 src/            Express + TypeScript API (CommonJS, ts-node-dev)
   index.ts        listen + graceful shutdown; builds the app via createApp
   app.ts          createApp({ prisma, pdfRenderer, clientDist }) - middleware order, routers, SPA fallback, errorHandler
-  env.ts          zod-validated env (DATABASE_URL, PORT=8080, TEMPLATE_PATH)
+  env.ts          zod-validated env (DATABASE_URL, PORT=8080, TEMPLATE_PATH = file for size 100x70)
   http/           HttpError + errorHandler, asyncHandler, zod parse helpers
   middleware/     account.ts (tenant from X-Account header | ?account= | cookie -> req.account), requireAccount.ts (401)
   modules/        auth, labels, folders, templates, print: *.routes.ts / *.schema.ts (zod) / *.service.ts (account-scoped)
-  pdf/            render.ts (orchestration) + ean13, format, barcode, template, viewModel, html, sizes
+  pdf/            render.ts (orchestration) + browser (shared Chromium), ean13, format, barcode, template, viewModel, html, sizes
   prisma/         shared PrismaClient (client.ts)
 prisma/         schema.prisma (PostgreSQL) + migrations
 templates/      default.html, label-58x40.html (Handlebars label templates)
@@ -39,15 +39,15 @@ None real: "login" just stores an account slug; API trusts the `X-Account` heade
 Root (API): `npm run dev` (port 8080), `npm run build` (tsc -> dist), `npm start`, `npm run prisma:migrate|prisma:generate|prisma:studio`, `npm run seed`.
 Client (`cd client`): `npm run dev` (port 5173, proxies `/api` to 8080), `npm run build`, `npm run lint`.
 Requires `.env` with `DATABASE_URL` (Postgres); see `.env.example`. Puppeteer needs Chromium.
-Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src/**/*.test.ts`), `npm run test:api` (Vitest + real throwaway Postgres via `DATABASE_URL`; resets the DB); client has `npm test`. CI: `.github/workflows/ci.yml`. Remaining refactor work (Phases 3-5) and handoff notes: see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
+Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src/**/*.test.ts`), `npm run test:api` (Vitest + real throwaway Postgres via `DATABASE_URL`; resets the DB; includes a real-Chromium PDF smoke test, skip with `SKIP_PDF=1`, Chromium path via `PUPPETEER_EXECUTABLE_PATH`); client has `npm test`. CI: `.github/workflows/ci.yml`. Remaining refactor work (Phases 3-5) and handoff notes: see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
 
 ## Print flow
 
-`GET /api/print?ids=1,2&size=58x40|100x70` -> `renderLabelsToPdf` -> loads template -> maps labels (formats dates DD.MM.YYYY, computes kcal/kJ from protein/fat/carbs, generates EAN-13 with check digit; auto barcode `200000000000 + id` if missing) -> PDF.
+`GET /api/print?ids=1,2&size=58x40|100x70` (unknown size -> 400) -> `renderLabelsToPdf({accountId, ids, size})` -> loads template (account's `isCurrent` DB template -> file for size: 58x40 `label-58x40.html`, 100x70 `default.html` -> bundled) -> maps labels (formats dates DD.MM.YYYY in UTC, computes kcal/kJ from protein/fat/carbs, generates EAN-13 with check digit; auto barcode `200000000000 + id` if missing) -> PDF via a shared lazily-launched Chromium (page per request; only `data:` requests allowed; closed on shutdown). Handlebars escapes `{{ }}`; raw HTML only via `{{{ }}}` in the template.
 
 ## Known problems (refactor targets)
 
-- `renderLabelsToPdf` / `loadTemplateHtml` ignore the account (templates leak across tenants; `all` option; "latest updated" template wins, `isCurrent` unused); `render.ts` launches a browser per request; Handlebars `noEscape: true`; dates formatted in server-local TZ; unknown print size silently falls back to A4. `barcodeType` forced to `ean13`; `extra` not exposed by the API.
+- `barcodeType` forced to `ean13`; `extra` not exposed by the API.
 - Client: label type duplicated in `types.ts` and `store/labels.ts`; stores expect `data.items` while API returns arrays (store/labels is likely dead code); fetch error handling duplicated; account header is never sent by `api.ts` (relies on cookie - verify); large page component with `prompt`/`alert`.
 - `scripts/create-account.js` requires `dist/` build.
 

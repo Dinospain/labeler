@@ -15,13 +15,13 @@ export function calcEnergyText(p?: number | null, f?: number | null, c?: number 
   return `${kcal} ккал / ${kJ} кДж`
 }
 
-/** Дата в формате DD.MM.YYYY (если задана) */
+/** Дата в формате DD.MM.YYYY в UTC (даты хранятся как UTC-полночь), если задана */
 export function formatDate(d?: string | Date | null): string | undefined {
   if (!d) return undefined
   const date = typeof d === 'string' ? new Date(d) : d
   if (isNaN(date.getTime())) return undefined
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yy = String(date.getFullYear())
+  const dd = String(date.getUTCDate()).padStart(2, '0')
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const yy = String(date.getUTCFullYear())
   return `${dd}.${mm}.${yy}`
 }
