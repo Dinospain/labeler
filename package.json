@@ -10,6 +10,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "ts-node scripts/seed-accounts.ts",
+    "create-account": "ts-node scripts/create-account.ts",
     "purge:default": "ts-node scripts/purge-default.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
