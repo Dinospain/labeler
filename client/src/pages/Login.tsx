@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authApi, type Account } from '../api/auth'
+import { errorMessage } from '../api/client'
 import { getAccountSlug, setAccountSlug, clearAccountSlug } from '../utils/account'
-
-type Account = { id: number; name: string; slug: string }
 
 export default function Login() {
     const nav = useNavigate()
@@ -12,8 +12,7 @@ export default function Login() {
     const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
-        fetch('/api/auth/accounts')
-            .then(r => r.json())
+        authApi.accounts()
             .then(setAccounts)
             .catch(() => setAccounts([]))
     }, [])
@@ -25,19 +24,11 @@ export default function Login() {
         if (!s) { setError('Выберите предприятие или введите slug'); return }
         setLoading(true)
         try {
-            const r = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ slug: s }),
-            })
-            if (!r.ok) {
-                const body = await r.json().catch(() => ({}))
-                throw new Error(body?.error || `HTTP ${r.status}`)
-            }
+            await authApi.login(s)
             setAccountSlug(s)
             nav('/') // домой
-        } catch (e: any) {
-            setError(e?.message ?? String(e))
+        } catch (e) {
+            setError(errorMessage(e))
         } finally {
             setLoading(false)
         }
