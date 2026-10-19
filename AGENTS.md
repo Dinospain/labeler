@@ -36,7 +36,7 @@ None real: "login" just stores an account slug; API trusts the `X-Account` heade
 Root (API): `npm run dev` (port 8080), `npm run build` (tsc -> dist), `npm start`, `npm run prisma:migrate|prisma:generate|prisma:studio`, `npm run seed`.
 Client (`cd client`): `npm run dev` (port 5173, proxies `/api` to 8080), `npm run build`, `npm run lint`.
 Requires `.env` with `DATABASE_URL` (Postgres); see `.env.example`. Puppeteer needs Chromium.
-There are currently **no tests** and no root lint script (eslint config exists).
+Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit), `npm run test:api` (Vitest + real Postgres); client has `npm test`. CI: `.github/workflows/ci.yml`. No tests written yet - see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
 
 ## Print flow
 
