@@ -1,0 +1,198 @@
+# Refactor & Test Plan
+
+Status: **proposal, not started**. Written after a full read of `src/`, `client/src/`, `prisma/`, `scripts/`, `templates/`.
+Intended to be executed by a separate session, phase by phase. Each phase = one PR, CI green before the next.
+
+Ground rules for the implementer:
+
+- **Tests first, then refactor.** Phase 1 pins current behaviour of the pure logic so later moves are safe.
+- Behaviour-preserving by default. Anything that changes behaviour is listed explicitly in §3 (bugs) or §7 (decisions) — don't invent extra changes.
+- Keep the stack: Express 4, Prisma 5, React 19, Vite, Tailwind 4, zustand. No framework migrations, no major version bumps.
+- Match style: single quotes, no semicolons (server), Russian UI strings/comments stay Russian.
+- Every schema change → Prisma migration.
+- Update `AGENTS.md` at the end of each phase if layout/commands changed.
+
+---
+
+## 1. Current state (summary)
+
+Server (`src/`): Express app with 5 routers, Prisma, Handlebars + Puppeteer PDF rendering, bwip-js EAN-13.
+Client (`client/`): one real page (`LabelsFourPanels`, 314 lines), `Login`, an unrouted `TemplateEditor`, 4 modals, 3 zustand stores (2 of them unused/broken).
+No tests, no CI, no root lint script. `npm run build` likely fails today (see B1).
+
+## 2. Target structure
+
+```
+src/
+  app.ts                 createApp({ prisma, pdfRenderer }) -> express app (no listen) — testable with supertest
+  index.ts               reads env, createApp(), listen, graceful shutdown (SIGINT/SIGTERM)
+  env.ts
+  prisma/client.ts       the ONLY PrismaClient
+  http/
+    errors.ts            HttpError, notFound(), badRequest(); errorHandler middleware (JSON, zod-aware)
+    asyncHandler.ts      wraps async handlers (Express 4 does not catch rejections)
+    validate.ts          zod helpers: parseBody(schema), parseIdParam()
+  middleware/
+    account.ts           resolveAccount (parsing split into pure fn `readAccountRef(req)`)
+    requireAccount.ts    single 401 guard (replaces 3 copies)
+  modules/
+    labels/   labels.schema.ts (zod), labels.service.ts (account-scoped queries), labels.routes.ts
+    folders/  folders.schema.ts, folders.service.ts, folders.routes.ts
+    templates/templates.schema.ts, templates.service.ts, templates.routes.ts   (account-scoped!)
+    auth/     auth.routes.ts
+    print/    print.routes.ts
+  pdf/
+    ean13.ts             ensureEan13, formatEanHuman, autoBarcodeFor(id)
+    format.ts            formatDate, calcEnergy (returns {kcal,kJ}) + energyText
+    barcode.ts           makeBarcodeDataUrl (bwip-js)
+    template.ts          fixupTemplate, loadTemplateHtml(accountId, size), bundled default
+    viewModel.ts         toLabelViewModel(label) — pure except barcode image
+    html.ts              buildHtml(tpl, labels)
+    browser.ts           shared Puppeteer browser (lazy launch, reuse, close on shutdown)
+    render.ts            renderLabelsToPdf({ accountId, ids, size }) — orchestration only
+    sizes.ts             LABEL_SIZES = { '58x40': {...pdf opts}, '100x70': {...}, a4 } + parseSize()
+client/src/
+  api/client.ts          request<T>() — one place for headers (X-Account), JSON, error mapping, 204
+  api/{labels,folders,templates,auth}.ts
+  types.ts               single source of domain types (incl. address, mchsInfo, website, dates)
+  features/labels/       LabelForm.tsx (shared by create+edit), labelForm.ts (pure: toPayload/fromLabel),
+                         LabelList.tsx, useLabels.ts (state + CRUD)
+  features/folders/      FolderPanel.tsx, useFolders.ts, CreateFolderDialog.tsx
+  features/print/        PrintModal.tsx, printUrl.ts
+  pages/                 LabelsPage.tsx (composition only), Login.tsx, TemplateEditor.tsx (routed or deleted, see D5)
+  components/            Modal.tsx, ConfirmDialog.tsx, Toast/inline error
+  utils/account.ts
+```
+
+Delete: `client/src/store/labels.ts`, `client/src/store/folders.ts` (dead/broken), `renderLabelsToPdfFromRequest`, `src/prisma/seed.ts` (broken, superseded by `scripts/seed-accounts.ts`), unused `axios` dep, the second `PrismaClient`s in `index.ts`/`templates.ts`.
+Decide on `store/templates.ts` together with D5.
+
+## 3. Bugs found (fix during the refactor, each with a regression test)
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| B1 | `src/prisma/seed.ts` | Uses non-existent `priceCents`, no `accountId`, `upsert` template without `accountId` → `tsc` fails (it's under `rootDir`) | Delete; `npm run seed` already uses `scripts/seed-accounts.ts`. Verify `npm run build` passes. |
+| B2 | `src/routes/templates.ts` | Not account-scoped; `POST` cannot work (`accountId` is required in schema); `make-current`/`updateMany` reset **every tenant's** templates; own `PrismaClient` | Scope all queries by `req.account.id`, require account, use shared prisma, 404 on foreign id |
+| B3 | `src/pdf/render.ts:39` | `loadTemplateHtml` picks the latest-updated template of **any** account; ignores `isCurrent` and size | `loadTemplateHtml(accountId, size)`: account's `isCurrent` template → file for the size → bundled default |
+| B4 | `render.ts:233` | `all: true` prints labels of all tenants (currently unreachable from routes, but exported) | Remove `all`; render takes `accountId` and always filters by it |
+| B5 | `PrintModal` sends `size=58x40`, but default `TEMPLATE_PATH` is `default.html` with `@page 100mm 70mm` + `preferCSSPageSize: true` | Size param effectively ignored; output page size comes from template CSS | Map size → template file (`58x40 → label-58x40.html`, `100x70 → default.html`); reject unknown sizes with 400 |
+| B6 | `labels.ts:23` `pickCreateUpdate` on `PUT` | Fields missing from the body are written as `null` → editing a label wipes `manufacturedAt/packagedAt/expiresAt/address/...` that the form doesn't send | `PUT` uses a zod schema where omitted = `undefined` (unchanged), explicit `null` = clear. Consider `PATCH` semantics (D3) |
+| B7 | `labels.ts` | No validation: `Number('abc')` → `NaN` passed to Prisma (500); `:id` not validated | zod schemas; `parseIdParam` → 400 |
+| B8 | all routes | Async handlers without try/catch in Express 4 → Prisma error = unhandled rejection, request hangs | `asyncHandler` + central `errorHandler` |
+| B9 | `index.ts` | `resolveAccount` before `cors`/`json`; `/api/folders` and `/api/auth` mounted twice; `app.get('*')` SPA fallback returns `index.html` for unknown `/api/*` GETs | Order: cors → json → resolveAccount → `/api` routers → `/api/*` 404 JSON → static → SPA fallback (non-`/api` only) |
+| B10 | `render.ts:220` | Handlebars `noEscape: true` → label text with `<`/`&` breaks layout and is HTML injection into a Chromium running with `--no-sandbox` | Escape by default (`{{ }}`); templates that need raw HTML use `{{{ }}}` explicitly. Also block all non-`data:` network requests in Puppeteer (`page.setRequestInterception`) so templates can't hit `file://`/internal URLs. See D2 |
+| B11 | `render.ts:249` | New Chromium per request (slow, memory) | Shared browser, new page per request, close page in `finally` |
+| B12 | `render.ts:187` `formatDate` | Uses server-local timezone; dates sent as `YYYY-MM-DD` are stored as UTC midnight → may print previous day on servers west of UTC | Format in UTC (or a configured TZ, D4). Test with `TZ=America/New_York` |
+| B13 | `ensureEan13` | Input <12 digits is right-padded with zeros; a 13-digit input with a wrong check digit is silently "corrected" | Keep auto-fix behaviour for printing (pinned by tests), but validate on write: barcode must be 12 digits, or 13 with a valid check digit → 400 otherwise (D6) |
+| B14 | `LabelsFourPanels.tsx:96` | `.sort()` mutates the `labels` state array when no filter applies | `[...arr].sort(...)` |
+| B15 | `LabelCreateModal` | Stays mounted when closed → form state not reset between opens; `defaultFolderId` only read on first mount | Mount form only when open (or `key`), init from props |
+| B16 | Create/Edit modals | No inputs for `manufacturedAt/packagedAt/expiresAt/address/mchsInfo/website` although templates print them (`default.html:89-91` prints empty "МЧС:", "Сайт:") | Add fields to the shared `LabelForm`; wrap optional footer lines in `{{#if}}` in templates |
+| B17 | `LabelsFourPanels.handleDelete` | No error handling (unhandled rejection, UI silently stale) | Use the same error surface as other actions |
+| B18 | Folder `_count` | Counts in folder list not updated after create/delete/move of labels | Recompute from local labels or refetch folders after label mutations |
+| B19 | `TemplateEditor` | Not routed; calls `/api/print?all=true` (param ignored by server) | See D5 |
+| B20 | `scripts/create-account.js` | Requires `dist/` | Rewrite as `scripts/create-account.ts`, run via `ts-node`, add `npm run account:create` |
+| B21 | `.env.example` | Typo `DATABASE_URL==`; missing PORT/TEMPLATE_PATH | Fix, document all vars |
+
+Already fine (verified, no action): `X-Account` **is** sent — `client/src/main.tsx` monkey-patches `window.fetch`. Replace that patch with the explicit header in `api/client.ts` (Phase 4), keep `?account=` for the PDF iframe URL. `Label.folderId` FK is `ON DELETE SET NULL`, so deleting a non-empty folder works.
+
+## 4. Testing strategy
+
+**Unit / API — Vitest** (root and client each get their own `vitest.config.ts`).
+**E2E — Playwright** (`e2e/` at repo root, own `playwright.config.ts`).
+Component behaviour is covered by extracting pure logic into modules (Vitest) + Playwright e2e for real UI. No React Testing Library unless D7 says otherwise.
+
+### 4.1 Server unit (Vitest, no DB)
+- `ean13`: check digit for known codes (`460123456789 → 4601234567893`, `200000000001 → …`), non-digits stripped, 13-digit input recomputed, short input padding (pinned), `formatEanHuman`, `autoBarcodeFor(id)`.
+- `format`: `formatDate` (Date, ISO string, invalid → undefined, null), UTC behaviour under `TZ` env (B12); `calcEnergy` (zeros, nulls, decimals, rounding; pin current 4/9/4 + `kcal*4.184`).
+- `template.fixupTemplate`: each of the 4 regex rewrites, idempotence, untouched normal template.
+- `viewModel.toLabelViewModel`: dates formatted, auto barcode when missing, barcodeDataUrl starts with `data:image/png;base64,` (real bwip-js — it's fast).
+- `html.buildHtml`: renders N labels, escapes `<script>` in productName (B10), both shipped templates compile.
+- `sizes.parseSize`: `58x40`, `100x70`, `10x7` alias, case-insensitive, unknown → error.
+- `labels.schema`: number/empty-string/null coercion, date parsing, folderId variants, barcode validation (B13), PUT omitted-vs-null (B6).
+- `middleware/account.readAccountRef`: header > query > cookie precedence, numeric id vs slug, cookie with `=` in value.
+
+### 4.2 Server API (Vitest + supertest, real Postgres)
+- Needs a real DB: `DATABASE_URL` pointing to a throwaway Postgres (CI service container; locally `docker run postgres:16`). Per test file: `prisma migrate reset --force --skip-seed` once in `globalSetup`, `TRUNCATE ... RESTART IDENTITY CASCADE` in `beforeEach`. Run API test files sequentially (`fileParallelism: false`).
+- `createApp({ prisma, pdfRenderer })` — inject a fake `pdfRenderer` for route tests so they don't launch Chromium.
+- Fixtures helper: `makeAccount(slug)`, `makeFolder`, `makeLabel`.
+- Cases:
+  - auth: list accounts sorted; login ok / 400 empty / 404 unknown.
+  - every protected route: 401 without account; account via header, `?account=`, cookie, numeric id.
+  - **tenant isolation matrix** (the most important tests): account B cannot GET/PUT/DELETE A's label/folder/template (404), cannot attach a label to A's folder (400), print with A's ids → 404, template list only own.
+  - labels CRUD: create minimal, create full, validation errors (400 with message), PUT partial does not clobber (B6), delete 204 then 404.
+  - folders: CRUD, `_count`, delete with labels → labels' folderId null.
+  - templates: create, single `isCurrent` per account, make-current doesn't touch other tenant (B2).
+  - print: ids filtering/ordering, all-labels default, unknown size 400, renderer called with `accountId` and resolved template.
+  - unknown `/api/x` → JSON 404 (B9); Prisma error → JSON 500 (B8).
+- One **PDF smoke test** (tagged, real Puppeteer, can be skipped with `SKIP_PDF=1`): response starts with `%PDF`, page count == label count (count `/Type /Page` objects), MediaBox matches size (58×40 mm ≈ 164.4×113.4 pt).
+
+### 4.3 Client unit (Vitest, `environment: 'node'` is enough for pure modules)
+- `labelForm`: `fromLabel(label)` ↔ `toPayload(values)` (empty strings → null, numeric parsing, dates `YYYY-MM-DD`, trims name).
+- label filtering/sorting helper (folder filter, case-insensitive search, Russian `localeCompare`, no mutation — B14).
+- `api/client.request`: sets `X-Account`, parses `{error}` messages, handles 204, network error → Error (stub `fetch` with `vi.fn`).
+- `printUrl(labelId, size, slug)`.
+
+### 4.4 E2E (Playwright, Chromium from `/opt/pw-browsers` in cloud sessions)
+- `webServer`: build client, start API (`npm start` after build) on a test port against the test DB, run `npm run seed` (accounts `hlebzavod`, `restaurant`).
+- Flows:
+  1. Redirect to `/login` without account; login via select and via manual slug; unknown slug shows error.
+  2. Seeded labels visible for `hlebzavod`, not those of `restaurant` (and vice versa after "Сбросить" + re-login).
+  3. Create folder → appears and becomes active; create label in it → listed, count updated.
+  4. Edit label (incl. date fields) → saved values persist after reload; untouched fields not wiped (B6).
+  5. Search filter + folder filter.
+  6. Print preview: opening the modal triggers `/api/print` → `200 application/pdf` (assert with `page.waitForResponse`; don't assert the PDF viewer UI).
+  7. Delete label (confirm dialog) and delete folder → labels move to "Все".
+- Replace `prompt/alert/confirm` (D8) before writing e2e, or handle via `page.on('dialog')`.
+- Use stable selectors: add `data-testid` / accessible names during Phase 4.
+
+### 4.5 CI
+`.github/workflows/ci.yml`: Node 20, `postgres:16` service; jobs: `lint` (root + client), `typecheck` (root `tsc --noEmit`, client `tsc -b`), `test:unit` (root + client), `test:api`, `e2e` (Playwright, upload report on failure).
+
+New scripts — root: `lint`, `typecheck`, `test` (unit), `test:api`, `test:e2e`; client: `test`.
+
+## 5. Phases
+
+**Phase 0 — tooling & baseline (no behaviour change)**
+- Fix B1, B21. Add Vitest (root + client), supertest, Playwright deps; root `lint`/`typecheck` scripts; CI workflow with lint + typecheck + an empty-passing test job.
+- Done when: `npm run build`, `npm run lint`, `npm run typecheck`, `cd client && npm run build && npm run lint` pass in CI.
+
+**Phase 1 — extract & pin pure PDF logic**
+- Split `render.ts` into `pdf/{ean13,format,barcode,template,viewModel,html,sizes}.ts` by *moving* code unchanged; delete `renderLabelsToPdfFromRequest`.
+- Write §4.1 tests for current behaviour (including the odd ones, marked `// pinned: current behaviour`).
+- Done when: unit tests green, print output unchanged (manual check of one PDF or the smoke test).
+
+**Phase 2 — server structure + API tests**
+- `createApp` / `index.ts` split, middleware order (B9), `asyncHandler` + `errorHandler` (B8), `requireAccount`, single prisma, zod schemas (B7), services with account-scoped queries (`findFirst({ where: { id, accountId } })` instead of find-then-compare).
+- Write §4.2 tests *against the current API contract first*, then refactor routes until green.
+- Then fix B2, B6, B13 with failing tests first.
+- Done when: API suite green, including the tenant-isolation matrix.
+
+**Phase 3 — PDF pipeline fixes**
+- B3, B4, B5 (size→template mapping, `sizes.ts`), B10 (escaping + request interception), B11 (shared browser, closed on shutdown), B12 (UTC dates).
+- Update both templates: `{{#if}}` around address/МЧС/website; keep raw-HTML fields only where intended.
+- PDF smoke test.
+
+**Phase 4 — client refactor**
+- `api/client.ts` + per-resource modules, remove `window.fetch` monkey patch and dead stores, single `types.ts` (add missing fields).
+- Split `LabelsFourPanels` into `LabelList`, `FolderPanel`, `useLabels`, `useFolders`; one `LabelForm` for create+edit (B15, B16); fix B14, B17, B18.
+- Replace `prompt/alert/confirm` with `Modal`-based dialogs + inline error (D8). Add `data-testid`s.
+- §4.3 tests.
+
+**Phase 5 — E2E + cleanup**
+- Playwright suite §4.4 in CI.
+- B19/D5 (template editor), B20, remove `axios`, update `AGENTS.md` (layout, commands, remove fixed "known problems").
+
+## 6. Out of scope (unless asked)
+Real authentication, i18n, UI redesign, Prisma/Express/React major upgrades, multi-labels-per-page layout (`perRow`), barcode types other than EAN-13.
+
+## 7. Decisions needed from the owner (defaults in **bold** — implementer uses the default if unanswered)
+
+- **D1 Auth**: keep slug-only "login" (**yes**, out of scope) — but note any user can read any tenant by changing the header.
+- **D2 Template escaping**: escape label fields by default (**yes**); allow raw HTML in templates themselves (**yes**, templates are trusted per tenant).
+- **D3 Update semantics**: keep `PUT` but with "omitted = unchanged" (**yes**) vs. introduce `PATCH`.
+- **D4 Date timezone**: format dates in UTC (**UTC**) vs. a configurable `LABEL_TZ` (e.g. `Europe/Minsk`).
+- **D5 TemplateEditor**: **route it at `/templates` with account-scoped API** vs. delete it and the templates store.
+- **D6 Barcode validation**: reject invalid EAN-13 on save (**yes**) vs. keep silent auto-correction everywhere.
+- **D7 Component tests**: **none beyond pure-logic Vitest + Playwright e2e** vs. Playwright component testing (`@playwright/experimental-ct-react`, still experimental).
+- **D8 Dialogs**: **replace native `prompt/alert/confirm` with in-app modals** vs. keep them.
+- **D9 Energy formula**: keep current 4/9/4 kcal + `kcal × 4.184` kJ (**keep**) vs. TR TS 022 coefficients (17/37/17 kJ per g) computed independently.
