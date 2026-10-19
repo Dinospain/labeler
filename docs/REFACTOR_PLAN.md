@@ -1,6 +1,6 @@
 # Refactor & Test Plan
 
-Status: **proposal, not started**. Written after a full read of `src/`, `client/src/`, `prisma/`, `scripts/`, `templates/`.
+Status: **Phases 0–2 done (see §0), Phases 3–5 open**. Written after a full read of `src/`, `client/src/`, `prisma/`, `scripts/`, `templates/`.
 Intended to be executed by a separate session, phase by phase. Each phase = one PR, CI green before the next.
 
 Ground rules for the implementer:
@@ -14,7 +14,31 @@ Ground rules for the implementer:
 
 ---
 
-## 1. Current state (summary)
+## 0. Progress & handoff (read this first)
+
+**TL;DR** — Phases 0, 1, 2 are implemented on branch `claude/youthful-cray-t8825p` ([PR #6](https://github.com/Dinospain/labeler/pull/6)). Phases 3–5 are untouched. State: root `npm run lint`, `typecheck`, `build`, `npm test` (36 unit tests) and `npm run test:api` (41 API tests, real Postgres) are green locally; client `build`/`lint`/`test` pass (lint has 18 warnings, see below). CI (`.github/workflows/ci.yml`: `server`, `api`, `client` jobs) was added but had not been observed running when this was written.
+
+**Done**
+- Phase 0: CI, Vitest (root + client), supertest/Playwright deps (Playwright not used yet, no `playwright.config.ts`/`e2e/` yet), root `lint`/`typecheck`/`test`/`test:api` scripts. B1 (deleted `src/prisma/seed.ts`), B21 (`.env.example`). `dist/` is now gitignored.
+- Phase 1: `src/pdf/render.ts` split into `ean13, format, barcode, template, viewModel, html, sizes` (moved unchanged); dead `renderLabelsToPdfFromRequest` removed. Pinned-behaviour tests live next to the modules (`src/pdf/*.test.ts`), marked `pinned`.
+- Phase 2: `src/app.ts` (`createApp({ prisma, pdfRenderer, clientDist? })`), thin `src/index.ts` (listens, SIGINT/SIGTERM shutdown), `src/http/{errors,asyncHandler,validate}.ts`, `middleware/{account,requireAccount}.ts` (`readAccountRef` is pure), `src/modules/{auth,labels,folders,templates,print}/` with zod schemas, account-scoped services (`findFirst({ id, accountId })`) and routes. Old `src/routes/*` deleted. Fixed **B2, B6, B7, B8, B9, B13** (B13 validation on write only; print still auto-corrects) and the single-`isCurrent`-per-account rule. Middleware order is now cors → json → resolveAccount → `/api` routers → `/api/*` JSON 404 → static → SPA fallback (non-`/api` only) → errorHandler. `address`, `mchsInfo`, `website` are now accepted by the labels API.
+- API tests in `test/*.api.test.ts` (helpers in `test/helpers.ts`, DB reset in `test/globalSetup.ts` via `prisma migrate reset`, `TRUNCATE` per test). They need `DATABASE_URL` pointing at a **throwaway** DB (migrate reset wipes it). Locally in the cloud container: `service postgresql start`, create DB `labeler_test`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/labeler_test`.
+
+**Not done / deviations from the plan**
+- Phase 2 tests were written together with the refactor rather than strictly before it.
+- `extra` (Json) is still not exposed by the labels API/schema.
+- `renderLabelsToPdf` still ignores the account and still has the `all` option (B3, B4, Phase 3). The `pdfRenderer` injected in `index.ts` calls it with `{ ids, size }` only; Phase 3 should change the `PdfRenderer` type in `modules/print/print.routes.ts` to also receive `accountId`, and add the unknown-size 400 (B5).
+- Print route still passes `size` through unvalidated; unknown size → A4 (pinned in `sizes.ts`/`render.ts`).
+- Both PDF-related pinned tests (`html.test.ts` "does not escape values", `format.test.ts` local-time dates) must be **updated deliberately** when fixing B10/B12.
+- The PDF smoke test (§4.2) is not written; no real PDF has been rendered in this work, so "print output unchanged" for Phase 1 is only covered by unit tests.
+- Client lint: `no-explicit-any`, `no-empty`, `no-unused-vars` are downgraded to warnings in `client/eslint.config.js` (TODO to restore to error in Phase 4).
+- `scripts/` (B20), client (B14–B19), `axios` removal, e2e: untouched.
+
+**Next: Phase 3** (B3, B4, B5, B10, B11, B12, template `{{#if}}` for address/МЧС/website, PDF smoke test), then 4 and 5 as written below. Keep `AGENTS.md` updated at the end of each phase.
+
+---
+
+## 1. Current state (summary, as of the start of the work)
 
 Server (`src/`): Express app with 5 routers, Prisma, Handlebars + Puppeteer PDF rendering, bwip-js EAN-13.
 Client (`client/`): one real page (`LabelsFourPanels`, 314 lines), `Login`, an unrouted `TemplateEditor`, 4 modals, 3 zustand stores (2 of them unused/broken).

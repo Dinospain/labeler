@@ -20,3 +20,9 @@ export function formatEanHuman(ean: string): string {
 export function autoBarcodeFor(id: number | string | null | undefined): string {
   return String(200000000000 + Number(id || 0))
 }
+
+/** Штрихкод при сохранении: ровно 12 цифр, либо 13 цифр с верной контрольной цифрой */
+export function isValidBarcodeInput(input: string): boolean {
+  if (/^\d{12}$/.test(input)) return true
+  return /^\d{13}$/.test(input) && ensureEan13(input) === input
+}
