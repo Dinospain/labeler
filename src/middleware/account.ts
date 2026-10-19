@@ -1,34 +1,37 @@
 // src/middleware/account.ts
-import type { Request, Response, NextFunction } from 'express'
-import { prisma } from '../prisma/client'
+import type { NextFunction, Request, RequestHandler, Response } from 'express'
+import type { PrismaClient } from '@prisma/client'
 
-export async function resolveAccount(req: Request, _res: Response, next: NextFunction) {
+/** Достаём ссылку на аккаунт: заголовок X-Account > ?account= > cookie X-Account */
+export function readAccountRef(req: Pick<Request, 'headers' | 'query'>): string {
+  const cookieHeader = req.headers.cookie || ''
+  const cookieMap = Object.fromEntries(
+    cookieHeader.split(';').map((p) => {
+      const [k, ...rest] = p.trim().split('=')
+      return [k, rest.join('=')]
+    })
+  )
+  const header = req.headers['x-account']
+  return (
+    (Array.isArray(header) ? header[0] : header) ||
+    (req.query.account as string | undefined) ||
+    cookieMap['X-Account'] ||
+    ''
+  ).toString().trim()
+}
+
+export function resolveAccount(prisma: PrismaClient): RequestHandler {
+  return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-        // читаем из заголовка, query, а затем из cookie
-        const cookieHeader = req.headers.cookie || ''
-        const cookieMap = Object.fromEntries(cookieHeader.split(';').map(p => {
-            const [k, ...rest] = p.trim().split('=')
-            return [k, rest.join('=')]
-        }))
+      const raw = readAccountRef(req)
+      if (!raw) return next()
 
-        const raw = (
-            req.header('X-Account') ||
-            req.query.account ||
-            cookieMap['X-Account'] ||
-            ''
-        ).toString().trim()
-
-        if (!raw) return next()
-
-        let acc = null as null | { id: number; slug: string }
-        if (/^\d+$/.test(raw)) {
-            acc = await prisma.account.findUnique({ where: { id: Number(raw) }, select: { id: true, slug: true } })
-        } else {
-            acc = await prisma.account.findUnique({ where: { slug: raw }, select: { id: true, slug: true } })
-        }
-        if (acc) req.account = acc
-        next()
+      const where = /^\d+$/.test(raw) ? { id: Number(raw) } : { slug: raw }
+      const acc = await prisma.account.findUnique({ where, select: { id: true, slug: true } })
+      if (acc) req.account = acc
+      next()
     } catch (e) {
-        next(e)
+      next(e)
     }
+  }
 }

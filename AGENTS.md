@@ -6,14 +6,17 @@ Multi-tenant web app for designing and printing product labels (food labels: com
 
 ```
 src/            Express + TypeScript API (CommonJS, ts-node-dev)
-  index.ts        app wiring, static serving of client/dist, SPA fallback
+  index.ts        listen + graceful shutdown; builds the app via createApp
+  app.ts          createApp({ prisma, pdfRenderer, clientDist }) - middleware order, routers, SPA fallback, errorHandler
   env.ts          zod-validated env (DATABASE_URL, PORT=8080, TEMPLATE_PATH)
-  middleware/account.ts   resolves tenant from X-Account header | ?account= | cookie -> req.account
-  routes/         auth (list/"login" by slug), labels, folders, templates, print
-  pdf/render.ts   labels -> Handlebars template -> Puppeteer PDF; EAN-13 via bwip-js
-  prisma/         shared PrismaClient (client.ts), seed.ts
+  http/           HttpError + errorHandler, asyncHandler, zod parse helpers
+  middleware/     account.ts (tenant from X-Account header | ?account= | cookie -> req.account), requireAccount.ts (401)
+  modules/        auth, labels, folders, templates, print: *.routes.ts / *.schema.ts (zod) / *.service.ts (account-scoped)
+  pdf/            render.ts (orchestration) + ean13, format, barcode, template, viewModel, html, sizes
+  prisma/         shared PrismaClient (client.ts)
 prisma/         schema.prisma (PostgreSQL) + migrations
 templates/      default.html, label-58x40.html (Handlebars label templates)
+test/           API tests (*.api.test.ts, supertest + real Postgres; globalSetup runs prisma migrate reset!)
 scripts/        seed-accounts.ts, purge-default.ts, create-account.js
 client/         Vite + React 19 + Tailwind 4 + zustand + react-router (separate package.json)
   src/api.ts      fetch wrappers (used by LabelsFourPanels page)
@@ -36,7 +39,7 @@ None real: "login" just stores an account slug; API trusts the `X-Account` heade
 Root (API): `npm run dev` (port 8080), `npm run build` (tsc -> dist), `npm start`, `npm run prisma:migrate|prisma:generate|prisma:studio`, `npm run seed`.
 Client (`cd client`): `npm run dev` (port 5173, proxies `/api` to 8080), `npm run build`, `npm run lint`.
 Requires `.env` with `DATABASE_URL` (Postgres); see `.env.example`. Puppeteer needs Chromium.
-Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit), `npm run test:api` (Vitest + real Postgres); client has `npm test`. CI: `.github/workflows/ci.yml`. No tests written yet - see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
+Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit, `src/**/*.test.ts`), `npm run test:api` (Vitest + real throwaway Postgres via `DATABASE_URL`; resets the DB); client has `npm test`. CI: `.github/workflows/ci.yml`. Remaining refactor work (Phases 3-5) and handoff notes: see `docs/REFACTOR_PLAN.md` (phased refactor & test plan).
 
 ## Print flow
 
@@ -44,11 +47,8 @@ Root also has `npm run lint`, `npm run typecheck`, `npm test` (Vitest unit), `np
 
 ## Known problems (refactor targets)
 
-- `templates` routes are not account-scoped and use their own `PrismaClient`; `index.ts` also creates one. `renderLabelsToPdf` / `loadTemplateHtml` ignore the account (templates and `all` leak across tenants; "latest updated" template wins, `isCurrent` unused).
-- Routes mounted twice (`/api/folders`, `/api/auth`); auth route registered after SPA fallback; `resolveAccount` runs before `cors`/`json`.
-- Ownership checks duplicated per route; no zod validation in labels/folders; unsafe `any` types; `barcodeType` forced to `ean13`; `extra`, `address`, `mchsInfo`, `website` fields not exposed in client types/API payload.
+- `renderLabelsToPdf` / `loadTemplateHtml` ignore the account (templates leak across tenants; `all` option; "latest updated" template wins, `isCurrent` unused); `render.ts` launches a browser per request; Handlebars `noEscape: true`; dates formatted in server-local TZ; unknown print size silently falls back to A4. `barcodeType` forced to `ean13`; `extra` not exposed by the API.
 - Client: label type duplicated in `types.ts` and `store/labels.ts`; stores expect `data.items` while API returns arrays (store/labels is likely dead code); fetch error handling duplicated; account header is never sent by `api.ts` (relies on cookie - verify); large page component with `prompt`/`alert`.
-- `render.ts` mixes template loading, barcode, formatting and Puppeteer; launches a browser per request; contains dead `renderLabelsToPdfFromRequest`.
 - `scripts/create-account.js` requires `dist/` build.
 
 ## Conventions
