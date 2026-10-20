@@ -1,0 +1,118 @@
+name: PR preview
+
+# Временный превью-стенд для PR: приложение + одноразовая Postgres поднимаются прямо в
+# GitHub Actions и публикуются через Cloudflare quick tunnel (бесплатно, без аккаунта и домена).
+# Ссылка постится комментарием в PR и живёт, пока выполняется job (PREVIEW_MINUTES).
+# Новый push в PR останавливает старый стенд и поднимает новый.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PREVIEW_MINUTES: 60
+  MARKER: '<!-- labeler-preview -->'
+
+jobs:
+  preview:
+    # PR из форков не получают write-токен и секреты - для них стенд не поднимаем
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: labeler_preview
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/labeler_preview
+      PORT: 8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Comment - building
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `${process.env.MARKER}\n⏳ Превью собирается для \`${context.payload.pull_request.head.sha.slice(0, 7)}\`… ([лог](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}))\n\n<sub>run:${context.runId}</sub>`
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number, per_page: 100 })
+            const existing = comments.find(c => c.body.includes(process.env.MARKER))
+            if (existing) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body })
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body })
+
+      - run: npm ci
+      - run: npm --prefix client ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run seed
+      - run: npm run build
+      - run: npm --prefix client run build
+
+      - name: Start app
+        run: |
+          nohup npm start > app.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://localhost:8080/api/auth/accounts >/dev/null && exit 0
+            sleep 1
+          done
+          cat app.log
+          exit 1
+
+      - name: Start Cloudflare quick tunnel
+        run: |
+          curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          nohup ./cloudflared tunnel --no-autoupdate --url http://localhost:8080 > tunnel.log 2>&1 &
+          for i in $(seq 1 60); do
+            url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -n1 || true)
+            if [ -n "$url" ]; then echo "PREVIEW_URL=$url" >> "$GITHUB_ENV"; exit 0; fi
+            sleep 1
+          done
+          cat tunnel.log
+          exit 1
+
+      - name: Comment - ready
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const until = new Date(Date.now() + Number(process.env.PREVIEW_MINUTES) * 60000)
+              .toISOString().slice(11, 16)
+            const body = `${process.env.MARKER}\n🚀 **Превью готово:** ${process.env.PREVIEW_URL}\n\nКоммит \`${context.payload.pull_request.head.sha.slice(0, 7)}\`, работает примерно до ${until} UTC. Тестовые данные: аккаунты \`hlebzavod\` и \`restaurant\` (вход - ввести slug). База одноразовая, данные не сохраняются между превью.\n\n<sub>run:${context.runId}</sub>`
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number, per_page: 100 })
+            const existing = comments.find(c => c.body.includes(process.env.MARKER))
+            if (existing) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body })
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body })
+
+      - name: Keep preview alive
+        run: sleep $((PREVIEW_MINUTES * 60))
+
+      # Выполняется и при отмене (новый push) - но не затирает комментарий нового запуска
+      - name: Comment - stopped
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number, per_page: 100 })
+            const existing = comments.find(c => c.body.includes(process.env.MARKER))
+            if (!existing || !existing.body.includes(`run:${context.runId}`)) return
+            const body = `${process.env.MARKER}\n💤 Превью остановлено. Чтобы поднять заново: Actions → PR preview → **Re-run all jobs**.\n\n<sub>run:${context.runId}</sub>`
+            await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body })
