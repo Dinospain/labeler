@@ -40,7 +40,7 @@ export default function Login() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="min-h-screen flex items-center justify-center bg-pink-200 px-4">
             <div className="w-full max-w-md bg-white border rounded-2xl p-6 shadow-sm">
                 <h1 className="text-xl font-semibold mb-4">Вход по предприятию</h1>
 
@@ -84,7 +84,7 @@ export default function Login() {
                         <button
                             type="button"
                             onClick={logout}
-                            className="px-4 py-2 rounded-xl bg-gray-200 text-black hover:bg-gray-300 border border-slate-400"
+                            className="px-4 py-2 rounded-xl bg-sky-300 text-black hover:bg-sky-400 border border-sky-400"
                         >
                             Сбросить
                         </button>
